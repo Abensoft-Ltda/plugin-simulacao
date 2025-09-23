@@ -1,9 +1,0 @@
-{
-  "manifest_version": 3,
-  "name": "Plugin - Simulação Habitacional",
-  "version": "1.0",
-  "description": "Plugin para a simulação habitacional.",
-  "action": {
-    "default_popup": "popup.html"
-  }
-}

@@ -1,4 +1,6 @@
-import React, {useState} from 'react';
+import React from 'react';
+import { useState } from 'react';
+import './App.css';
 import { createRoot } from 'react-dom/client';
 
 const Popup = () => {
@@ -7,7 +9,6 @@ const Popup = () => {
         chrome.tabs.create({ url: "https://www.caixa.gov.br/simule-habitacao" });
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
             const url = tabs[0].url;
-            docu
         })
     }
 
@@ -18,7 +19,7 @@ const Popup = () => {
 
 
     return (
-            <div style={{ padding: '10px', textAlign: 'center' }}>
+            <div className="h-full w-full bg-main-green">
             <h1>Hello from React! 👋</h1>
             <p>This UI is rendered by React.</p>
             <button onClick={startSimulation}>

@@ -20,12 +20,15 @@ module.exports = {
     output: {
         filename: '[name].js',
         path: path.resolve(__dirname, 'dist'),
+        clean: true,
     },
     plugins: [
         new CopyPlugin({
             patterns: [
-                { from: "src/manifest.json", to: "manifest.json" },
-                { from: "src/popup.html", to: "popup.html" },
+                // This explicitly tells webpack to use the original file's name and extension
+                // for the output file, which flattens the directory structure.
+                { from: "src/manifest.json", to: "[name][ext]" },
+                { from: "src/popup.html", to: "[name][ext]" },
             ],
         }),
     ],

@@ -2,7 +2,7 @@
 
 async function fillFields() {
     const tabs = await chrome.tabs.query({active: true, currentWindow: true});
-    const tabs = tabs[0]
+    const tab = tabs[0]
     if(!tab?.id) return;
 
     await chrome.scripting.executeScript({
