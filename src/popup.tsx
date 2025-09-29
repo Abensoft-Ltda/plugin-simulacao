@@ -1,34 +1,35 @@
 import React from 'react';
-import { useState } from 'react';
-import './App.css';
 import { createRoot } from 'react-dom/client';
+import { LogViewer } from './LogViewer';
+import { useAutomation } from './methods/startAutomation';
+import './App.css';
 
-const Popup = () => {
-
-    function startSimulation() {
-        chrome.tabs.create({ url: "https://www.caixa.gov.br/simule-habitacao" });
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            const url = tabs[0].url;
-        })
-    }
-
-    const [isInCaixa, setIsInCaixa] = useState(null);
-    if (isInCaixa) {
-
-    }
-
+const Popup: React.FC = () => {
+    const { startSimulation, clearLogs, isOnCaixaPage } = useAutomation();
 
     return (
-            <div className="h-full w-full bg-main-green">
-            <h1>Hello from React! 👋</h1>
-            <p>This UI is rendered by React.</p>
-            <button onClick={startSimulation}>
-                Click Me
+        <div className="h-full w-full bg-gray-700 p-6 flex flex-col text-white">
+            <h1 className="text-2xl font-bold mb-2 text-center">Simulador Habitacional</h1>
+            <p className="text-center text-sm opacity-80 mb-6">by Abensoft</p>
+
+            {isOnCaixaPage ? (
+                <p className="text-center bg-white/10 p-3 rounded-md mb-4">Você já está na página da Caixa. Pronto para simular!</p>
+            ) : (
+                <p className="text-center text-sm opacity-90 mb-4">Clique abaixo para abrir a página de simulação da Caixa e iniciar a automação.</p>
+            )}
+
+            <button 
+                onClick={startSimulation}
+                className="w-full bg-main-green text-white font-bold py-3 px-4 rounded-lg shadow-lg backdrop-blur-sm 
+                transition-all hover:bg-gray-700/90 hover:scale-105 focus:outline-none focus:ring-2 
+                focus:ring-offset-2 focus:ring-offset-main-green focus:ring-white mb-4"
+            >
+                Iniciar Simulação
             </button>
+
+            <LogViewer onClear={clearLogs} />
         </div>
     );
-
-
 };
 
 const container = document.getElementById('root');

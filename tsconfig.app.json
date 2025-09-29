@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    /* General */
+    "strict": true,
+    "module": "ESNext",
+    "target": "ES2022",
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "jsx": "preserve",
+    "noEmit": true,
+    "typeRoots": ["node_modules/@types"],
+    "types": ["vite/client", "chrome"],
+    "skipLibCheck": true,
+
+    /* Linting / safety */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    /* TS build info */
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+
+    /* Libraries */
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src", "src/**/*.ts", "src/**/*.tsx"]
+}

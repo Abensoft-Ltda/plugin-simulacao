@@ -7,18 +7,22 @@
   },
   "permissions": [
     "scripting",
-    "tabs"
+    "tabs",
+    "activeTab",
+    "storage"
   ],
   "host_permissions": [
     "https://*.caixa.gov.br/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "web_accessible_resources": [
     {
       "resources": [
-        "inpage.js"
+        "assets/*.js",
+        "assets/*.css"
       ],
       "matches": [
         "https://*.caixa.gov.br/*"
