@@ -52,7 +52,7 @@ function setupTabListener(tabId: number) {
             const automationData = activeAutomations.get(tabId);
             if (automationData) {
                 console.log(`[background] Re-injecting script for tab ${tabId}`);
-                injectScripts(tabId, automationData);
+                injectScripts(tabId, automationData, tab.url);
             }
         }
     };
@@ -70,7 +70,7 @@ function setupTabListener(tabId: number) {
     });
 }
 
-async function injectScripts(tabId: number, data: any) {
+async function injectScripts(tabId: number, data: any, url: string) {
     try {
         await console.log(`[background] Injecting data into tab ${tabId}.`);
         await chrome.scripting.executeScript({
@@ -83,8 +83,15 @@ async function injectScripts(tabId: number, data: any) {
             args: [data, true]
         });
 
-        await console.log(`[background] Injecting loader script into tab ${tabId}.`);
-        const scriptUrl = chrome.runtime.getURL('caixaNavigation.js');
+        let scriptToInject;
+        if (url.includes('https://habitacao.caixa.gov.br/siopiweb-web/simulaOperacaoInternet.do?method=enquadrarProdutos')) {
+            scriptToInject = 'caixaNavigationSecondStep.js';
+        } else {
+            scriptToInject = 'caixaNavigation.js';
+        }
+
+        await console.log(`[background] Injecting loader script '${scriptToInject}' into tab ${tabId}.`);
+        const scriptUrl = chrome.runtime.getURL(scriptToInject);
         await chrome.scripting.executeScript({
             target: { tabId: tabId },
             world: 'MAIN',

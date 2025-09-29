@@ -614,115 +614,104 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			registerLog(' Not on caixa.gov.br, skipping automation');
 			return;
 		}
+		registerLog(' useEffect triggered for automation.');
 		
-		// Detect which page we're on and run appropriate step
-		const currentUrl = window.location.href;
-		const hasFirstPageElements = document.querySelector('#valorImovel');
-		const hasSecondPageElements = document.querySelector('#dataNascimento');
-		const hasOptionsPageElements = document.querySelector('#passo3');
-		
-		registerLog(` Page detection - URL: ${currentUrl}`);
-		registerLog(` First page elements: ${!!hasFirstPageElements}`);
-		registerLog(` Second page elements: ${!!hasSecondPageElements}`);
-		registerLog(` Options page elements: ${!!hasOptionsPageElements}`);
-		
-		// Determine what step to run based on page content
-		if (hasFirstPageElements && !hasSecondPageElements && !hasOptionsPageElements) {
-			registerLog(' Detected: First page - running step 1');
-			runFirstPageAutomation();
-		} else if (hasSecondPageElements && !hasOptionsPageElements) {
-			registerLog(' Detected: Second page - running step 2');  
-			runSecondPageAutomation();
-		} else if (hasOptionsPageElements) {
-			registerLog(' Detected: Options page - running step 3');
-			runOptionsPageAutomation();
-		} else {
-			registerLog(' Detected: Unknown page or results page - waiting');
-			// This could be a results page or transition page, just wait
-		}
-		
-	}, [isCaixaPage, JSON.stringify(fields)]);
-
-	// Individual automation functions for each page
-	const runFirstPageAutomation = async () => {
-		try {
-			registerLog(' Starting first page automation...');
+		const runAutomation = async () => {
+			registerLog(' Starting automation sequence.');
+			
+			// --- Wait for page to be ready ---
+			registerLog(' Waiting 2 seconds for page to fully load...');
 			await new Promise(resolve => setTimeout(resolve, 2000));
 			
+			// --- Step 1: Fill the first page ---
+			registerLog(' Waiting for the first form to be ready...');
 			const firstPageKeyElement = await waitForElement('#valorImovel');
 			if (!firstPageKeyElement) {
-				registerLog(' First page form not ready yet.');
+				registerLog(' Automation failed: First page form did not load.');
 				return;
 			}
-			
 			registerLog(' First page ready. Filling fields.');
 			printLogs();
 			await fillFirstPage(fields);
 			
 			const nextButton1 = await waitForElement('#btn_next1'); 
 			if (!nextButton1) {
-				registerLog(' Next button not found on first page.');
+				registerLog(' Automation failed: "Next" button not found on first page.');
 				return;
 			}
 			registerLog(' Clicking "Próxima etapa".');
 			(nextButton1 as HTMLElement).click();
-		} catch (error: any) {
-			registerLog(` First page automation error: ${error.message}`);
-			printLogs();
-		}
-	};
-
-	const runSecondPageAutomation = async () => {
-		try {
-			registerLog(' Starting second page automation...');
-			await new Promise(resolve => setTimeout(resolve, 2000));
+			await new Promise(resolve => setTimeout(resolve, 2000)); // Longer wait after click
 			
-			const secondPageKeyElement = await waitForElement('#dataNascimento');
+			// --- Step 3: Fill the second page ---
+			registerLog(' Waiting for the second form to be ready...');
+			const secondPageKeyElement = await waitForElement('#dataNascimento'); // A field on the second page
 			if (!secondPageKeyElement) {
-				registerLog(' Second page form not ready yet.');
+				registerLog(' Automation failed: Second page form did not load.');
 				return;
 			}
-			
 			registerLog(' Second page ready. Filling fields.');
 			printLogs();
 			await fillSecondPage(fields);
 			
-			const nextButton2 = await waitForElement('#btn_next2');
+			const nextButton2 = await waitForElement('#btn_next2'); // Updated ID from HTML
 			if (!nextButton2) {
-				registerLog(' Next button not found on second page.');
+				registerLog(' Automation failed: "Next" button not found on second page.');
 				return;
 			}
 			registerLog(' Clicking "Próxima etapa" to go to options.');
 			(nextButton2 as HTMLElement).click();
-		} catch (error: any) {
-			registerLog(` Second page automation error: ${error.message}`);
-			printLogs();
-		}
-	};
-
-	const runOptionsPageAutomation = async () => {
-		try {
-			registerLog(' Starting options page automation...');
-			registerLog('🎯 ========== PROCESSING FINANCING OPTIONS ==========');
-			printLogs();
 			
-			await new Promise(resolve => setTimeout(resolve, 2000));
+			// --- Step 5: Process financing options ---
+			registerLog('🎯 ========== STARTING STEP 5: PROCESSING FINANCING OPTIONS ==========');
+			registerLog(`🌐 Current page URL: ${window.location.href}`);
+			registerLog(`📋 Page ready state: ${document.readyState}`);
 			
-			const optionsResult = await processFinancingOptions();
-			registerLog('✅ processFinancingOptions() completed');
+			registerLog(' ========== STARTING STEP 5: PROCESSING FINANCING OPTIONS ==========');
 			
-			if (optionsResult) {
-				registerLog(`🎉 Successfully processed ${optionsResult.result?.length || 0} financing options`);
-				registerLog(`📊 Financing Options Result: ${JSON.stringify(optionsResult, null, 2)}`);
+			// Check if we're already on the options page
+			const passo3Check = document.querySelector('#passo3');
+			registerLog(`🔍 Found #passo3 element: ${!!passo3Check}`);
+			
+			if (passo3Check) {
+				registerLog('✅ Already on options page, proceeding immediately');
 			} else {
-				registerLog('❌ No financing options found or processing failed');
+				registerLog('⏳ Waiting 3 seconds for options page to load...');
+				await new Promise(resolve => setTimeout(resolve, 3000));
 			}
+			
+			registerLog('🚀 About to call processFinancingOptions()...');
 			printLogs();
-		} catch (error: any) {
-			registerLog(` Options page automation error: ${error.message}`);
+			
+			try {
+				const optionsResult = await processFinancingOptions();
+				registerLog('✅ processFinancingOptions() completed');
+				registerLog(' processFinancingOptions() completed');
+				
+				if (optionsResult) {
+					registerLog(`🎉 Successfully processed ${optionsResult.result?.length || 0} financing options`);
+					registerLog(` Successfully processed ${optionsResult.result?.length || 0} financing options`);
+					registerLog(`📊 Financing Options Result: ${JSON.stringify(optionsResult, null, 2)}`);
+				} else {
+					registerLog('❌ No financing options found or processing failed');
+					registerLog(' No financing options found or processing failed');
+				}
+			} catch (error: any) {
+				console.error('💥 ERROR in processFinancingOptions():', error);
+				registerLog(` ERROR in processFinancingOptions(): ${error.message}`);
+				printLogs();
+			}
+			
+			registerLog(' Automation sequence completed.');
 			printLogs();
-		}
-	};
+		};
+		
+		runAutomation().catch(err => {
+			registerLog(` A critical error stopped the automation: ${err}`);
+			printLogs();
+		});
+		
+	}, [isCaixaPage, JSON.stringify(fields)]);
 	
 	const capitalizeWords = (str: string) => {
 		if (!str) return '';

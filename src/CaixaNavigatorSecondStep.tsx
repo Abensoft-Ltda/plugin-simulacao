@@ -34,10 +34,9 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 	}, [isCaixaPage, JSON.stringify(data)]);
 	
 	return (
-		<div className="text-xs space-y-1">
-			<div className="font-medium text-green-700">🎯 Second Step</div>
-			<div className="text-gray-600">Processing options...</div>
-			<div className="text-xs text-gray-500">URL: {window.location.pathname.split('/').pop()}</div>
+		<div className="caixa-navigator-second-step">
+			<h2>Caixa Second Step Automation Running...</h2>
+			<p>Processing financing options...</p>
 		</div>
 	);
 };
@@ -49,7 +48,10 @@ const AutoMountCaixaNavigatorSecondStep = () => (
 	<AutoMountComponent
 		Component={CaixaNavigatorSecondStep}
 		containerId="caixa-navigator-second-step-root"
-		containerClasses="fixed bottom-4 left-4 z-50 bg-green-50/95 backdrop-blur-sm border border-green-200 rounded-lg p-3 text-sm shadow-lg max-w-sm"
+		containerStyles={{
+			backgroundColor: 'lightblue',
+			border: '2px solid blue'
+		}}
 		logPrefix="caixaNavigationSecondStep.js"
 		registerLog={registerLog}
 		printLogs={printLogs}

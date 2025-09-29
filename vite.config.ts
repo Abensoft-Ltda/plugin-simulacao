@@ -49,6 +49,7 @@ export default defineConfig({
         popup: path.resolve(__dirname, 'src/popup.tsx'),
         background: path.resolve(__dirname, 'src/background.ts'),
         caixaNavigation: path.resolve(__dirname, 'src/CaixaNavigator.tsx'),
+        caixaNavigationSecondStep: path.resolve(__dirname, 'src/CaixaNavigatorSecondStep.tsx'),
       },
       output: {
         format: 'es',
@@ -56,6 +57,7 @@ export default defineConfig({
           if (chunkInfo.name === 'background') return 'background.js';
           if (chunkInfo.name === 'popup') return 'popup.js';
           if (chunkInfo.name === 'caixaNavigation') return 'caixaNavigation.js';
+          if (chunkInfo.name === 'caixaNavigationSecondStep') return 'caixaNavigationSecondStep.js';
           return '[name].[hash].js';
         },
         chunkFileNames: '[name].[hash].js',
