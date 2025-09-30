@@ -4,6 +4,76 @@ let activeAutomations = new Map<number, any>();
 let injectionInProgress = new Set<number>();
 
 chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
+    if (changeInfo.status === 'complete' && tab.url && tab.url.includes('superleme')) {
+        writeLog(`[background] Superleme page detected: ${tab.url}`);
+        
+        // Inject bridge script like in CaixaNavigatorSecondStep
+        chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'ISOLATED',
+            func: () => {
+                console.log('[bridge] Bridge content script loaded for Superleme');
+                
+                window.addEventListener('message', (event) => {
+                    if (event.source !== window) return;
+                    
+                    if (event.data.type === 'SUPERLEME_TO_BACKGROUND') {
+                        console.log('[bridge] Received message from Superleme:', event.data);
+                        
+                        chrome.runtime.sendMessage(event.data.payload, (response) => {
+                            console.log('[bridge] Background response:', response);
+                        });
+                    }
+                });
+            }
+        });
+        
+        // Inject main world script to extract cookies
+        chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            func: () => {
+                const extractAuth = () => {
+                    const allCookies = document.cookie.split(";");
+                    
+                    const getCookie = (name: string) => {
+                        const cookie = allCookies.find(cookie => cookie.includes(name));
+                        return cookie ? cookie.split("=")[1] : null;
+                    };
+
+                    const cotonicSid = getCookie('cotonic-sid');
+                    const zAuth = getCookie('z.auth');
+                    
+                    if (cotonicSid && zAuth) {
+                        const authData = {
+                            authToken: zAuth,
+                            authExpiry: new Date().getTime() + (24 * 60 * 60 * 1000),
+                            sessionData: {
+                                cotonicSid,
+                                zAuth,
+                                zLang: getCookie('z.lang'),
+                                zTz: getCookie('z.tz'),
+                                timezone: getCookie('timezone')
+                            }
+                        };
+                        
+                        console.log('[superleme] Sending auth data via bridge');
+                        window.postMessage({
+                            type: 'SUPERLEME_TO_BACKGROUND',
+                            payload: { action: 'storeAuth', authData: authData }
+                        }, '*');
+                    }
+                };
+                
+                // Try to extract auth immediately and periodically
+                extractAuth();
+                setInterval(extractAuth, 2000);
+            }
+        }).catch(() => {
+            // Ignore injection errors
+        });
+    }
+
     const automationData = activeAutomations.get(tabId);
     if (!automationData) return;
     
@@ -51,6 +121,21 @@ chrome.tabs.onRemoved.addListener((closedTabId: number) => {
 
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     console.log('[background] Received message:', request.action, request);
+    
+    if (request.action === "storeAuth") {
+        console.log('[background] Storing auth data and notifying popup...');
+        
+        chrome.storage.local.set(request.authData, () => {
+            if (chrome.runtime.lastError) {
+                console.error('[background] Error storing auth:', chrome.runtime.lastError);
+                sendResponse({ status: "error" });
+            } else {
+                console.log('[background] Auth stored successfully');
+                sendResponse({ status: "success" });
+            }
+        });
+        return true;
+    }
     
     if (request.action === "log" || request.action === "writeLog") {
         writeLog(request.message);

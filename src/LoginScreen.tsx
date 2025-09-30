@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getConfig } from './config';
 
 interface LoginScreenProps {
     onAuthenticated: () => void;
@@ -7,55 +8,116 @@ interface LoginScreenProps {
 const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
     const [isAuthenticating, setIsAuthenticating] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
+    const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
     useEffect(() => {
         setIsAnimating(true);
-        checkExistingAuth();
-    }, []);
+        handleAuthenticate();
+        
+        // Listen for storage changes - simple and direct
+        const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+            if (changes.authToken && changes.authToken.newValue) {
+                console.log('[LoginScreen] Auth token detected, authenticating...');
+                onAuthenticated();
+            }
+        };
+
+        chrome.storage.onChanged.addListener(handleStorageChange);
+
+        return () => {
+            chrome.storage.onChanged.removeListener(handleStorageChange);
+        };
+    }, [onAuthenticated]);
 
     const checkExistingAuth = async () => {
         try {
-            const result = await chrome.storage.local.get(['authToken', 'authExpiry']);
+            console.log('[LoginScreen] Checking existing auth...');
+            const result = await chrome.storage.local.get(['authToken', 'authExpiry', 'sessionData']);
+            console.log('[LoginScreen] Stored auth data:', result);
+            console.log('[LoginScreen] Current time:', new Date().getTime());
+            console.log('[LoginScreen] Token expiry:', result.authExpiry);
+            console.log('[LoginScreen] Time until expiry:', result.authExpiry ? (result.authExpiry - new Date().getTime()) / 1000 / 60 : 'no expiry');
+            
             if (result.authToken && result.authExpiry && new Date().getTime() < result.authExpiry) {
+                console.log('[LoginScreen] Valid auth found, auto-logging in...');
                 onAuthenticated();
+                return;
+            } else {
+                if (!result.authToken) {
+                    console.log('[LoginScreen] No authToken found');
+                }
+                if (!result.authExpiry) {
+                    console.log('[LoginScreen] No authExpiry found');
+                }
+                if (result.authExpiry && new Date().getTime() >= result.authExpiry) {
+                    console.log('[LoginScreen] Token expired');
+                }
             }
+            
+            console.log('[LoginScreen] Cleaning up invalid auth...');
+            await cleanLocalStorage();
         } catch (error) {
-            console.log('No existing auth found');
+            console.log('[LoginScreen] No existing auth found:', error);
+            await cleanLocalStorage();
         }
+    };
+
+    const cleanLocalStorage = async () => {
+        await chrome.storage.local.remove([
+            'authToken', 
+            'authExpiry', 
+            'sessionData', 
+            'lastValidated', 
+            'validatedSession'
+        ]);
     };
 
     const handleAuthenticate = async () => {
         setIsAuthenticating(true);
         
         try {
-            // Check if we're on the Superleme page and get cookies
             const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const config = await getConfig();
             
             if (tabs[0]?.url?.includes('superleme')) {
                 // Execute script to get cookies from Superleme
                 const results = await chrome.scripting.executeScript({
                     target: { tabId: tabs[0].id! },
-                    func: () => {
-                        const allCookies = document.cookie.split(";");
-                        
-                        const getCookie = (name: string) => {
-                            const cookie = allCookies.find(cookie => cookie.includes(name));
-                            return cookie ? cookie.split("=")[1] : null;
-                        };
+                    args: [config.urlSuperleme],
+                    func: (urlSuperleme: string) => {
+                        // Check if we're on the Superleme page
+                        if (window.location.href.includes(urlSuperleme)) {
+                            // Get cookies
+                            const allCookies = document.cookie.split(";");
+                            
+                            const getCookie = (name: string) => {
+                                const cookie = allCookies.find(cookie => cookie.includes(name));
+                                return cookie ? cookie.split("=")[1] : null;
+                            };
 
-                        return {
-                            cotonicSid: getCookie('cotonic-sid'),
-                            zAuth: getCookie('z.auth'),
-                            zLang: getCookie('z.lang'),
-                            zTz: getCookie('z.tz'),
-                            timezone: getCookie('timezone')
-                        };
+                            const cotonicSid = getCookie('cotonic-sid');
+                            const zAuth = getCookie('z.auth');
+                            const zLang = getCookie('z.lang');
+                            const zTz = getCookie('z.tz');
+                            const timezone = getCookie('timezone');
+
+                            return {
+                                cotonicSid,
+                                zAuth,
+                                zLang,
+                                zTz,
+                                timezone
+                            };
+                        }
+                        return null;
                     }
                 });
 
                 const cookieData = results[0].result;
                 
-                if (cookieData.cotonicSid && cookieData.zAuth) {
+                if (cookieData && cookieData.cotonicSid && cookieData.zAuth) {
+                    console.log('[LoginScreen] Cookies extracted successfully:', cookieData);
+                    
                     // Store auth data
                     const authData = {
                         authToken: cookieData.zAuth,
@@ -63,29 +125,51 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
                         sessionData: cookieData
                     };
                     
+                    console.log('[LoginScreen] Storing auth data...');
                     await chrome.storage.local.set(authData);
                     
+                    console.log('[LoginScreen] Sending to background script...');
+                    // Send to background script for processing
+                    chrome.runtime.sendMessage({
+                        action: "cotonicSid",
+                        value: cookieData
+                    });
+                    
+                    console.log('[LoginScreen] Authentication successful! Transitioning...');
                     // Successful auth animation
                     setIsAnimating(false);
                     setTimeout(() => {
+                        console.log('[LoginScreen] Calling onAuthenticated...');
                         onAuthenticated();
                     }, 300);
                 } else {
                     throw new Error('Authentication cookies not found');
                 }
             } else {
-                // Open Superleme for authentication
-                chrome.tabs.create({ 
-                    url: 'https://superleme.com.br?ext=superleme',
-                    active: true 
-                });
+                // Show React dialog instead of browser confirm
+                setShowLoginPrompt(true);
             }
         } catch (error) {
             console.error('Authentication failed:', error);
             alert('Falha na autenticação. Por favor, tente novamente.');
+            await cleanLocalStorage();
         } finally {
             setIsAuthenticating(false);
         }
+    };
+
+    const handleLoginPromptYes = async () => {
+        const config = await getConfig();
+        chrome.tabs.create({ 
+            url: `${config.urlSuperleme}`,
+            active: true 
+        });
+        chrome.runtime.sendMessage({ action: "keepSidebarOpen" });
+        setShowLoginPrompt(false);
+    };
+
+    const handleLoginPromptNo = () => {
+        setShowLoginPrompt(false);
     };
 
     const handleSupport = () => {
@@ -95,8 +179,35 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
         });
     };
 
+    const logout = async () => {
+        await cleanLocalStorage();
+        window.location.reload();
+    };
+
     return (
         <div className={`h-full w-full bg-gray-700 gap-5 p-6 flex flex-col text-white transition-all duration-500 ${isAnimating ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+            {showLoginPrompt && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 p-6 rounded-lg max-w-sm mx-4">
+                        <h3 className="text-lg font-bold mb-4">Login Necessário</h3>
+                        <p className="text-sm mb-6">Você precisa fazer login no Superleme para continuar. Deseja abrir a página de login?</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleLoginPromptYes}
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded transition-colors"
+                            >
+                                Sim
+                            </button>
+                            <button
+                                onClick={handleLoginPromptNo}
+                                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded transition-colors"
+                            >
+                                Não
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <form className="flex flex-col items-center justify-center flex-1 space-y-6" onSubmit={(e) => e.preventDefault()}>
                 <div className="flex justify-center items-center">
                     <img 

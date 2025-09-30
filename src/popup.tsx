@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { LogViewer } from './LogViewer';
 import { useAutomation } from './methods/startAutomation';
 import LoginScreen from './LoginScreen';
+import { isDevMode } from './config';
 import './App.css';
 
 const Popup: React.FC = () => {
@@ -10,10 +11,17 @@ const Popup: React.FC = () => {
     const [simulationResult, setSimulationResult] = useState<any>(null);
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+    const [isDev, setIsDev] = useState<boolean>(false);
 
     useEffect(() => {
         checkAuthentication();
+        loadDevMode();
     }, []);
+
+    const loadDevMode = async () => {
+        const devMode = await isDevMode();
+        setIsDev(devMode);
+    };
 
     const checkAuthentication = async () => {
         try {
@@ -115,14 +123,6 @@ const Popup: React.FC = () => {
         setSimulationResult(null);
     };
 
-    const testStorage = () => {
-        const testData = { test: true, message: "This is a test result" };
-        console.log('[popup] Setting test data:', testData);
-        chrome.storage.local.set({ simulationResult: testData }, () => {
-            console.log('[popup] Test data stored');
-        });
-    };
-
     if (simulationResult) {
         return (
             <div className="h-full w-full bg-gray-700 p-6 flex flex-col text-white">
@@ -131,7 +131,7 @@ const Popup: React.FC = () => {
                     <div className="flex gap-2">
                         <button 
                             onClick={clearResults}
-                            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                            className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm transition-colors"
                         >
                             Limpar
                         </button>
@@ -146,7 +146,7 @@ const Popup: React.FC = () => {
                 
                 <div className="bg-gray-800 rounded-lg p-4 flex-1 overflow-hidden">
                     <div className="h-full overflow-auto">
-                        <pre className="text-xs text-green-400 whitespace-pre-wrap break-words">
+                        <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words leading-relaxed">
                             {JSON.stringify(simulationResult, null, 2)}
                         </pre>
                     </div>
@@ -155,7 +155,7 @@ const Popup: React.FC = () => {
                 <div className="mt-4 pt-4 border-t border-gray-600">
                     <button 
                         onClick={() => setSimulationResult(null)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition-colors"
+                        className="w-full bg-main-green hover:bg-green-600 text-white py-2 px-4 rounded transition-colors"
                     >
                         Nova Simulação
                     </button>
@@ -192,14 +192,7 @@ const Popup: React.FC = () => {
                 Iniciar Simulação
             </button>
 
-            <button 
-                onClick={testStorage}
-                style={{marginBottom: '10px', padding: '5px 10px', fontSize: '12px'}}
-            >
-                Test Storage
-            </button>
-
-            <LogViewer onClear={clearLogs} />
+            {isDev && <LogViewer onClear={clearLogs} />}
         </div>
     );
 };
