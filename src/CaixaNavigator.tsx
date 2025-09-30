@@ -63,7 +63,37 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 		});
 	}
 	
-	// Utility to simulate natural input with vanilla JS
+	// Instant value setter for all input types
+	async function setInstantValue(selector: string, value: string, isSelect = false) {
+		const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement;
+		if (!el) {
+			registerLog(` Element not found: ${selector}`);
+			return;
+		}
+		
+		registerLog(` Setting ${selector} instantly to: "${value}"`);
+		
+		if (isSelect) {
+			// For select elements, find the option and set it
+			const select = el as HTMLSelectElement;
+			const option = Array.from(select.options).find(opt => 
+				opt.text.toLowerCase().includes(value.toLowerCase()) || 
+				opt.value.toLowerCase().includes(value.toLowerCase())
+			);
+			if (option) {
+				select.value = option.value;
+				registerLog(` Selected option: "${option.text}" (value: ${option.value})`);
+			}
+		} else {
+			// For regular inputs
+			el.value = value;
+		}
+		
+		el.dispatchEvent(new Event('change', { bubbles: true }));
+		el.dispatchEvent(new Event('input', { bubbles: true }));
+		await new Promise(resolve => setTimeout(resolve, 100)); // Minimal delay
+	}
+	
 	async function simulateNaturalInput(selector: string, value: string, delay = 500, retries = 3) {
 		for (let i = 0; i < retries; i++) {
 			try {
@@ -412,7 +442,7 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 		
 		// Fill data_nascimento
 		if (fields.data_nascimento) {
-			await simulateNaturalInput('#dataNascimento', fields.data_nascimento);
+			await setInstantValue('#dataNascimento', fields.data_nascimento);
 		}
 		
 		// Fill renda_familiar

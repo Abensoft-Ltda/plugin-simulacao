@@ -135,13 +135,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
                         value: cookieData
                     });
                     
-                    console.log('[LoginScreen] Authentication successful! Transitioning...');
-                    // Successful auth animation
-                    setIsAnimating(false);
-                    setTimeout(() => {
-                        console.log('[LoginScreen] Calling onAuthenticated...');
-                        onAuthenticated();
-                    }, 300);
+                    console.log('[LoginScreen] Authentication successful!');
+                    // Success animation will be shown in popup.tsx
+                    onAuthenticated();
                 } else {
                     throw new Error('Authentication cookies not found');
                 }

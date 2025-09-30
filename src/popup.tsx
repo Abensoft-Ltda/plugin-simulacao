@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { LogViewer } from './LogViewer';
 import { useAutomation } from './methods/startAutomation';
 import LoginScreen from './LoginScreen';
+import SuccessAnimation from './SuccessAnimation';
 import { isDevMode } from './config';
 import './App.css';
 
@@ -12,6 +13,8 @@ const Popup: React.FC = () => {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
     const [isDev, setIsDev] = useState<boolean>(false);
+    const [showSuccess, setShowSuccess] = useState<boolean>(false);
+    const [justLoggedIn, setJustLoggedIn] = useState<boolean>(false);
 
     useEffect(() => {
         checkAuthentication();
@@ -37,10 +40,17 @@ const Popup: React.FC = () => {
     };
 
     const handleAuthenticated = () => {
+        setJustLoggedIn(true);
         setIsAuthenticated(true);
     };
 
-    const handleLogout = async () => {
+    useEffect(() => {
+        if (isAuthenticated && justLoggedIn) {
+            setShowSuccess(true);
+            setTimeout(() => setShowSuccess(false), 1500);
+            setJustLoggedIn(false);
+        }
+    }, [isAuthenticated, justLoggedIn]);    const handleLogout = async () => {
         await chrome.storage.local.remove(['authToken', 'authExpiry', 'sessionData']);
         setIsAuthenticated(false);
         setSimulationResult(null);
@@ -84,9 +94,7 @@ const Popup: React.FC = () => {
         });
 
         const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-            console.log('[popup] Storage changed:', changes);
             if (changes.simulationResult) {
-                console.log('[popup] Simulation result changed:', changes.simulationResult.newValue);
                 setSimulationResult(changes.simulationResult.newValue);
             }
         };
@@ -165,7 +173,7 @@ const Popup: React.FC = () => {
     }
 
     return (
-        <div className="h-full w-full bg-gray-700 p-6 flex flex-col text-white">
+        <div className="h-full w-full bg-gray-700 p-6 flex flex-col text-white relative">
             <div className="flex items-center justify-between mb-4">
                 <h1 className="text-2xl font-bold">Simulador Habitacional</h1>
                 <button 
@@ -193,6 +201,8 @@ const Popup: React.FC = () => {
             </button>
 
             {isDev && <LogViewer onClear={clearLogs} />}
+            
+            <SuccessAnimation show={showSuccess} text="Login realizado!" />
         </div>
     );
 };
