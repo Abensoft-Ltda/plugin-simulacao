@@ -9,15 +9,20 @@ export type LogEntry = z.infer<typeof logEntrySchema>;
 
 const logHistorySchema = z.array(logEntrySchema);
 
-const STORAGE_KEY = 'logHistory';
+export const STORAGE_KEY = 'logHistory';
 
 export async function writeLog(message: string): Promise<void> {
+  console.log(message);
   const newLogEntry: LogEntry = {
     timestamp: Date.now(),
     message,
   };
 
   try {
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ action: "log", message: message });
+    }
+    
     console.log(message);
     const { [STORAGE_KEY]: storedLogs } = await chrome.storage.local.get(STORAGE_KEY);
     const parsedLogs = logHistorySchema.safeParse(storedLogs);
@@ -47,3 +52,4 @@ export async function clearLogs(): Promise<void> {
     console.error('Failed to clear logs:', error);
   }
 }
+

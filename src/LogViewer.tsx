@@ -31,7 +31,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClear }) => {
   }, [refreshLogs]);
 
   return (
-    <div className="mt-4 rounded-lg bg-gray-800/90 p-3 shadow-lg backdrop-blur-sm flex-grow overflow-y-auto font-mono">
+    <div className="mt-4 rounded-lg bg-gray-800/90 p-3 shadow-lg backdrop-blur-sm flex-grow overflow-y-scroll font-mono">
       <div className="flex items-center justify-between pb-2 border-b border-gray-700/50 mb-2">
         <div className="text-sm font-bold text-gray-300 tracking-wider">LOGS</div>
         <button

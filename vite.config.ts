@@ -36,7 +36,7 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         { src: 'popup.html', dest: '.' },
-        // { src: 'icons/*', dest: 'icons' }
+        { src: 'public/images/*', dest: 'images' }
       ]
     }),
     generateManifest()

@@ -1,4 +1,3 @@
-// Caixa.ts
 import { CaixaFields, CaixaInput, CaixaFieldsResult } from "./Validation";
 
 export class Caixa {

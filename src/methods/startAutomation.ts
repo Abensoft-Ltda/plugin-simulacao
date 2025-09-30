@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { writeLog, readLogs, clearLogs as clearStoredLogs, type LogEntry } from '../lib/logger';
+import { STORAGE_KEY, writeLog, readLogs, clearLogs as clearStoredLogs, type LogEntry } from '../lib/logger';
 
 const data = {
     target: "Caixa",
@@ -27,8 +27,17 @@ export const useAutomation = () => {
         setLogs(freshLogs);
     }, []);
 
+    chrome.storage.local.remove(STORAGE_KEY);
+
     useEffect(() => {
         refreshLogs();
+
+        const messageListener = (request: any) => {
+            if (request.action === "log") {
+                refreshLogs();
+            }
+        };
+        chrome.runtime.onMessage.addListener(messageListener);
 
         const storageListener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
             if (areaName === 'local' && changes.logHistory) {
@@ -44,7 +53,10 @@ export const useAutomation = () => {
             }
         });
 
-        return () => chrome.storage.onChanged.removeListener(storageListener);
+        return () => {
+            chrome.storage.onChanged.removeListener(storageListener);
+            chrome.runtime.onMessage.removeListener(messageListener);
+        }
     }, [refreshLogs]);
 
     const startSimulation = () => {
