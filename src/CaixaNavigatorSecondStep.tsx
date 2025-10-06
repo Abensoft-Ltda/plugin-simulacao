@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { AutoMountComponent } from './AutoMountComponent';
+import { SimulationOverlay } from './SimulationOverlay';
 import './App.css';
 
 let logs: string[] = [];
@@ -16,6 +17,8 @@ function printLogs() {
 
 export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> = ({ data }) => {
 	
+	const [isComplete, setIsComplete] = React.useState(false);
+
 	registerLog(`[CaixaNavigatorSecondStep] Received data: ${JSON.stringify(data)}`);
 	const isCaixaPage = typeof window !== 'undefined' && /\.caixa\.gov\.br$/.test(window.location.hostname);
 	
@@ -204,12 +207,12 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 						
 						await new Promise((resolve, reject) => {
 							const messageId = Date.now() + Math.random();
-							
+
 							const responseHandler = (event: MessageEvent) => {
 								if (event.source !== window) return;
 								if (event.data.type === 'BACKGROUND_TO_CAIXA') {
 									window.removeEventListener('message', responseHandler);
-									
+
 									if (event.data.success) {
 										registerLog(`Results sent successfully (attempt ${i + 1}). Response: ${JSON.stringify(event.data.response)}`);
 										console.log('Background response:', event.data.response);
@@ -221,16 +224,16 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 									}
 								}
 							};
-							
+
 							window.addEventListener('message', responseHandler);
-							
+
 							// Send message via bridge
 							window.postMessage({
 								type: 'CAIXA_TO_BACKGROUND',
 								messageId: messageId,
 								payload: { action: "simulationResult", payload: lendingOptions }
 							}, '*');
-							
+
 							// Timeout after 5 seconds
 							setTimeout(() => {
 								window.removeEventListener('message', responseHandler);
@@ -326,69 +329,79 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			
 			// Extract table data
 			const rows = table.querySelectorAll('tr');
-			const tableData: any = {};
+			const tableData: any = {
+				tipo_amortizacao: optionName,
+				prazo: null,
+				valor_total: null,
+				valor_entrada: null,
+				juros_nominais: null,
+				juros_efetivos: null
+			};
 
 			rows.forEach((row, rowIndex) => {
 				const cells = row.querySelectorAll('td');
 				if (cells.length >= 2) {
-					const key = cells[0].textContent?.trim();
-					const value = cells[1].textContent?.trim();
-					
+					const key = (cells[0].textContent?.trim() || '').toLowerCase();
+					const valueCell = cells[1];
+
+					// Try to get value from center tag first, then from td directly
+					const centerTag = valueCell.querySelector('center');
+					const value = (centerTag?.textContent?.trim() || valueCell.textContent?.trim() || '').replace(/\s+/g, ' ');
+
 					registerLog(` Row ${rowIndex + 1}: "${key}" = "${value}"`);
 					
 					if (key && value) {
-						if (key.includes('amortização')) {
-							tableData.tipo_amortizacao = `${value} ${optionName}`;
-							registerLog(` Mapped amortization: ${tableData.tipo_amortizacao}`);
-						} else if (key === 'Prazo escolhido') {
+						// Map fields based on key text (case-insensitive)
+						if (key.includes('amortiza')) {
+							tableData.tipo_amortizacao = `${value} ${optionName}`.trim();
+							registerLog(` Mapped tipo_amortizacao: ${tableData.tipo_amortizacao}`);
+						} else if (key.includes('prazo') && key.includes('escolhido')) {
 							tableData.prazo = value;
-						} else if (key === 'Valor do financiamento') {
+							registerLog(` Mapped prazo: ${tableData.prazo}`);
+						} else if (key.includes('financiamento') && key.includes('valor')) {
 							tableData.valor_total = value;
-						} else if (key === 'Valor da entrada') {
+							registerLog(` Mapped valor_total: ${tableData.valor_total}`);
+						} else if (key.includes('entrada') && key.includes('valor')) {
 							tableData.valor_entrada = value;
+							registerLog(` Mapped valor_entrada: ${tableData.valor_entrada}`);
 						}
 					}
 				}
 			});
 
-			// Extract interest rates with better selectors
+			// Extract interest rates using the same XPath selector as Python
 			try {
-				registerLog(` Looking for interest rates...`);
-				
-				// Try multiple approaches to find interest rates
-				const jurosNominaisSelectors = [
-					'td:contains("Juros Nominais") + td center',
-					'td:contains("Juros Nominais") ~ td center', 
-					'td[contains(.,"Juros Nominais")] + td center',
-					'//td[contains(.,"Juros Nominais")]/following-sibling::td/center'
-				];
-				
-				let jurosNominais = null;
-				for (const selector of jurosNominaisSelectors.slice(0, 2)) { // Skip XPath for now
-					jurosNominais = document.querySelector(selector);
-					if (jurosNominais) break;
-				}
-				
-				if (jurosNominais) {
-					tableData.juros_nominais = jurosNominais.textContent?.trim();
+				registerLog(` Looking for interest rates using XPath...`);
+
+				// Use XPath to find juros nominais - same as Python code
+				const jurosNominaisXPath = "//td[contains(., 'Juros Nominais')]/following-sibling::td/center";
+				const jurosNominaisResult = document.evaluate(
+					jurosNominaisXPath,
+					document,
+					null,
+					XPathResult.FIRST_ORDERED_NODE_TYPE,
+					null
+				);
+
+				if (jurosNominaisResult.singleNodeValue) {
+					tableData.juros_nominais = jurosNominaisResult.singleNodeValue.textContent?.trim();
 					registerLog(` Found juros nominais: ${tableData.juros_nominais}`);
 				} else {
 					registerLog(` Could not find juros nominais`);
 				}
 
-				let jurosEfetivos = null;
-				const jurosEfetivosSelectors = [
-					'td:contains("Juros Efetivos") + td center',
-					'td:contains("Juros Efetivos") ~ td center'
-				];
-				
-				for (const selector of jurosEfetivosSelectors) {
-					jurosEfetivos = document.querySelector(selector);
-					if (jurosEfetivos) break;
-				}
-				
-				if (jurosEfetivos) {
-					tableData.juros_efetivos = jurosEfetivos.textContent?.trim();
+				// Use XPath to find juros efetivos - same as Python code
+				const jurosEfetivosXPath = "//td[contains(., 'Juros Efetivos')]/following-sibling::td/center";
+				const jurosEfetivosResult = document.evaluate(
+					jurosEfetivosXPath,
+					document,
+					null,
+					XPathResult.FIRST_ORDERED_NODE_TYPE,
+					null
+				);
+
+				if (jurosEfetivosResult.singleNodeValue) {
+					tableData.juros_efetivos = jurosEfetivosResult.singleNodeValue.textContent?.trim();
 					registerLog(` Found juros efetivos: ${tableData.juros_efetivos}`);
 				} else {
 					registerLog(` Could not find juros efetivos`);
@@ -399,11 +412,10 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			}
 
 			registerLog(` Final table data: ${JSON.stringify(tableData)}`);
-			return Object.keys(tableData).length > 0 ? tableData : null;
+			return tableData;
 
 		} catch (error: any) {
 			registerLog(` Error extracting table data: ${error.message}`);
-			printLogs();
 			return null;
 		}
 	}
@@ -446,10 +458,19 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			return;
 		}
 		
+		// Check if automation has already run to prevent multiple executions
+		if ((window as any).__CAIXA_SECOND_STEP_EXECUTED) {
+			registerLog('[CaixaNavigatorSecondStep] Automation already executed, skipping');
+			return;
+		}
+
 		registerLog('[CaixaNavigatorSecondStep] Second step component loaded for financing options processing');
 		printLogs();
 		
 		const runSecondStepAutomation = async () => {
+			// Mark as executed to prevent re-runs
+			(window as any).__CAIXA_SECOND_STEP_EXECUTED = true;
+
 			registerLog('About to call processFinancingOptions()...');
 			printLogs();
 			
@@ -463,6 +484,9 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 				} else {
 					registerLog('No financing options found or processing failed');
 				}
+
+				// Mark automation as complete to show success animation
+				setIsComplete(true);
 			} catch (error: any) {
 				console.error('ERROR in processFinancingOptions():', error);
 				registerLog(` ERROR in processFinancingOptions(): ${error.message}`);
@@ -473,29 +497,37 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			printLogs();
         }
 
-        runSecondStepAutomation();
-		
-	}, [isCaixaPage, JSON.stringify(data)]);
-	
+        // Add a small delay to ensure page is fully loaded
+        setTimeout(() => {
+        	runSecondStepAutomation();
+        }, 1000);
+
+	}, [isCaixaPage]); // Removed JSON.stringify(data) to prevent re-runs on data changes
+
 	return (
-		<div className="caixa-navigator-second-step">
-			<h2>Caixa Second Step Automation Running...</h2>
-			<p>Processing financing options...</p>
-		</div>
+		<SimulationOverlay
+			title="Processando Opções"
+			subtitle="Procurando opções de financiamento"
+			bankName="Caixa Econômica Federal"
+			bankIcon="ibb-caixa"
+			isComplete={isComplete}
+		>
+			<div className="caixa-navigator-second-step">
+				<h2>Caixa Second Step Automation Running...</h2>
+				<p>Processing financing options...</p>
+			</div>
+		</SimulationOverlay>
 	);
 };
 
-registerLog('[caixaNavigationSecondStep.js] Script loaded. Starting auto-mount...');
+// registerLog('[caixaNavigationSecondStep.js] Script loaded. Starting auto-mount...');
 
-// Auto-mount the CaixaNavigatorSecondStep component
+// Auto-mount the CaixaNavigatorSecondStep component using AutoMountComponent
 const AutoMountCaixaNavigatorSecondStep = () => (
 	<AutoMountComponent
 		Component={CaixaNavigatorSecondStep}
 		containerId="caixa-navigator-second-step-root"
-		containerStyles={{
-			backgroundColor: 'lightblue',
-			border: '2px solid blue'
-		}}
+		containerStyles={{}}
 		logPrefix="caixaNavigationSecondStep.js"
 		registerLog={registerLog}
 		printLogs={printLogs}
@@ -513,38 +545,3 @@ const initializeAutoMount = () => {
 };
 
 initializeAutoMount();
-
-(function() {
-	async function main() {
-		try {
-			const data = (window as any).__CAIXA_AUTO_MOUNT_DATA;
-			if (data) {
-				registerLog('[CaixaNavigatorSecondStep] Auto-mounting with pre-seeded data.');
-				printLogs();
-				
-				const container = document.createElement('div');
-				container.id = 'caixa-navigator-second-step-root';
-				container.style.position = 'fixed';
-				container.style.top = '10px';
-				container.style.right = '10px';
-				container.style.zIndex = '9999';
-				container.style.backgroundColor = 'lightblue';
-				container.style.border = '1px solid blue';
-				container.style.padding = '10px';
-				document.body.appendChild(container);
-				
-				const root = createRoot(container);
-				root.render(React.createElement(CaixaNavigatorSecondStep, { data }));
-
-			} else {
-				registerLog('[CaixaNavigatorSecondStep] No pre-seeded data found.');
-			}
-		} catch (e: any) {
-			console.error(`[CaixaNavigatorSecondStep] Auto-mount failed: ${e.message}`, e);
-			registerLog(`[CaixaNavigatorSecondStep] Auto-mount failed: ${e.message}`);
-			printLogs();
-		}
-	}
-
-	main();
-})();

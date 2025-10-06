@@ -33,7 +33,7 @@ const Popup: React.FC = () => {
                 setIsAuthenticated(true);
             }
         } catch (error) {
-            console.log('No existing auth found');
+            console.log('[popup] No existing auth found', error);
         } finally {
             setIsCheckingAuth(false);
         }
@@ -50,46 +50,18 @@ const Popup: React.FC = () => {
             setTimeout(() => setShowSuccess(false), 1500);
             setJustLoggedIn(false);
         }
-    }, [isAuthenticated, justLoggedIn]);    const handleLogout = async () => {
-        await chrome.storage.local.remove(['authToken', 'authExpiry', 'sessionData']);
+    }, [isAuthenticated, justLoggedIn]);
+
+    const handleLogout = async () => {
+        await chrome.storage.local.remove(['authToken', 'authExpiry', 'sessionData', 'simulationResult']);
         setIsAuthenticated(false);
         setSimulationResult(null);
     };
 
     useEffect(() => {
-        console.log('[popup] Checking for existing simulation result...');
         chrome.storage.local.get(['simulationResult'], (result) => {
-            console.log('[popup] Storage result:', result);
-            console.log('[popup] Storage keys:', Object.keys(result));
-            console.log('[popup] Has simulationResult?', 'simulationResult' in result);
-            console.log('[popup] SimulationResult value:', result.simulationResult);
-            
             if (result.simulationResult) {
-                console.log('[popup] Found existing result, setting state');
                 setSimulationResult(result.simulationResult);
-            } else {
-                console.log('[popup] No existing result found in chrome.storage');
-                chrome.storage.local.get(null, (allData) => {
-                    console.log('[popup] All storage data:', allData);
-                });
-                
-                try {
-                    const fallbackResult = localStorage.getItem('caixa_simulation_result');
-                    if (fallbackResult) {
-                        console.log('[popup] Found result in localStorage fallback');
-                        const parsedResult = JSON.parse(fallbackResult);
-                        setSimulationResult(parsedResult);
-                        
-                        chrome.storage.local.set({ simulationResult: parsedResult }, () => {
-                            console.log('[popup] Moved fallback result to chrome.storage');
-                            localStorage.removeItem('caixa_simulation_result');
-                        });
-                    } else {
-                        console.log('[popup] No fallback result found in localStorage either');
-                    }
-                } catch (e) {
-                    console.log('[popup] Error checking localStorage fallback:', e);
-                }
             }
         });
 
@@ -106,9 +78,9 @@ const Popup: React.FC = () => {
         };
     }, []);
 
-    // Show loading while checking authentication
+    let content;
     if (isCheckingAuth) {
-        return (
+        content = (
             <div className="h-full w-full bg-gray-700 p-6 flex items-center justify-center text-white">
                 <div className="text-center">
                     <svg className="animate-spin h-8 w-8 text-white mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -119,92 +91,47 @@ const Popup: React.FC = () => {
                 </div>
             </div>
         );
-    }
-
-    // Show login screen if not authenticated
-    if (!isAuthenticated) {
-        return <LoginScreen onAuthenticated={handleAuthenticated} />;
-    }
-
-    const clearResults = () => {
-        chrome.storage.local.remove(['simulationResult']);
-        setSimulationResult(null);
-    };
-
-    if (simulationResult) {
-        return (
-            <div className="h-full w-full bg-gray-700 p-6 flex flex-col text-white">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold">Resultados da Simulação</h3>
-                    <div className="flex gap-2">
-                        <button 
-                            onClick={clearResults}
-                            className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm transition-colors"
-                        >
-                            Limpar
-                        </button>
-                        <button 
-                            onClick={handleLogout}
-                            className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                        >
-                            Sair
-                        </button>
-                    </div>
-                </div>
-                
-                <div className="bg-gray-800 rounded-lg p-4 flex-1 overflow-hidden">
-                    <div className="h-full overflow-auto">
-                        <pre className="text-sm text-gray-300 whitespace-pre-wrap break-words leading-relaxed">
-                            {JSON.stringify(simulationResult, null, 2)}
-                        </pre>
-                    </div>
-                </div>
-                
-                <div className="mt-4 pt-4 border-t border-gray-600">
+    } else if (!isAuthenticated) {
+        content = <LoginScreen onAuthenticated={handleAuthenticated} />;
+    } else {
+        content = (
+            <div className="h-full w-full bg-gray-700 p-6 flex flex-col text-white overflow-scroll scrollbar-dark">
+                <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                    <h1 className="text-2xl font-bold">Simulador Habitacional</h1>
                     <button 
-                        onClick={() => setSimulationResult(null)}
-                        className="w-full bg-main-green hover:bg-green-600 text-white py-2 px-4 rounded transition-colors"
+                        onClick={handleLogout}
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
                     >
-                        Nova Simulação
+                        Sair
                     </button>
                 </div>
+
+                <div className="flex-1 flex flex-col gap-4 min-h-0">
+                    <div className="flex items-center justify-center flex-shrink-0 flex-grow-0 basis-1/6">
+                        <p className="text-center text-lg opacity-90">Aguardando solicitação de simulação...</p>
+                    </div>
+
+                    {isDev && simulationResult && (
+                        <div className="bg-gray-800 rounded-lg p-2 border border-gray-600 flex flex-col overflow-scroll scrollbar-dark flex-grow flex-shrink basis-1/2 max-h-52">
+                            <h4 className="text-xs font-bold text-gray-400 mb-1 px-2 flex-shrink-0">Last Simulation Result (Dev Mode)</h4>
+                            <pre className="text-xs text-gray-300 whitespace-pre-wrap">
+                                {JSON.stringify(simulationResult, null, 2)}
+                            </pre>
+                        </div>
+                    )}
+
+                    {isDev && (
+                        <div className="flex flex-col flex-shrink-0 flex-grow-0 basis-1/3 overflow-scroll scrollbar-dark">
+                            <LogViewer onClear={clearLogs} />
+                        </div>
+                    )}
+                </div>
+                <SuccessAnimation show={showSuccess} text="Login realizado!" />
             </div>
         );
     }
 
-    return (
-        <div className="h-full w-full bg-gray-700 p-6 flex flex-col text-white relative">
-            <div className="flex items-center justify-between mb-4">
-                <h1 className="text-2xl font-bold">Simulador Habitacional</h1>
-                <button 
-                    onClick={handleLogout}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                >
-                    Sair
-                </button>
-            </div>
-            <p className="text-center text-sm opacity-80 mb-6">by Abensoft</p>
-
-            {isOnCaixaPage ? (
-                <p className="text-center bg-white/10 p-3 rounded-md mb-4">Você já está na página da Caixa. Pronto para simular!</p>
-            ) : (
-                <p className="text-center text-sm opacity-90 mb-4">Clique abaixo para abrir a página de simulação da Caixa e iniciar a automação.</p>
-            )}
-
-            <button 
-                onClick={startSimulation}
-                className="w-full bg-main-green text-white font-bold py-3 px-4 rounded-lg shadow-lg backdrop-blur-sm 
-                transition-all hover:bg-gray-700/90 hover:scale-105 focus:outline-none focus:ring-2 
-                focus:ring-offset-2 focus:ring-offset-main-green focus:ring-white mb-4"
-            >
-                Iniciar Simulação
-            </button>
-
-            {isDev && <LogViewer onClear={clearLogs} />}
-            
-            <SuccessAnimation show={showSuccess} text="Login realizado!" />
-        </div>
-    );
+    return content;
 };
 
 const container = document.getElementById('root');

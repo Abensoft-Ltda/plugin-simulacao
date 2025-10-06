@@ -1,8 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { CaixaFields } from './methods/Validation';
 import './App.css';
-
+import { SimulationOverlay } from './SimulationOverlay';
 
 declare global {
   interface Window {
@@ -23,7 +22,7 @@ function printLogs() {
 
 export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) => {
 
-	// Cache for select lookup tables - massive performance boost
+	// Cache for select lookup tables
 	const selectCache = React.useRef<Map<string, {
 		lookup: Record<string, string>;
 		optionsHash: string;
@@ -31,12 +30,11 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 
 	registerLog(` Received data: ${JSON.stringify(data)}`);
 	const isCaixaPage = typeof window !== 'undefined' && /\.caixa\.gov\.br$/.test(window.location.hostname);
-	// Build fields from raw data
-	const { fields, errors } = CaixaFields.buildCaixaFields(data);
-	registerLog(` Built fields: ${JSON.stringify(fields)}`);
-	if(errors.length > 0) registerLog(` Validation errors: ${JSON.stringify(errors)}`);
 
-	// Utility to wait for a key element before filling (non-throwing)
+	const fields = data.fields;
+	registerLog(` Using fields: ${JSON.stringify(fields)}`);
+
+	// Utility to wait for a key element before filling
 	function waitForElement(selector: string, timeout = 10000): Promise<Element | null> {
 		return new Promise((resolve) => {
 			const start = Date.now();
@@ -307,7 +305,6 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 
 	// Function to process all financing options and extract data is now in CaixaNavigatorSecondStep.tsx
 	
-	
 	React.useEffect(() => {
 		if (!isCaixaPage) {
 			registerLog(' Not on caixa.gov.br, skipping automation');
@@ -465,10 +462,17 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 	}
 	
 	return (
-		<div className="caixa-navigator">
-			<h2>Caixa Automation Running...</h2>
-			<p>Check the logs in the extension popup.</p>
-		</div>
+		<SimulationOverlay
+			title="Simulação Caixa"
+			subtitle="Preenchendo formulário automaticamente"
+			bankName="Caixa Econômica Federal"
+			bankIcon="ibb-caixa"
+		>
+			<div className="caixa-navigator">
+				<h2>Caixa Automation Running...</h2>
+				<p>Check the logs in the extension popup.</p>
+			</div>
+		</SimulationOverlay>
 	);
 };
 
@@ -484,13 +488,6 @@ registerLog('[caixaNavigation.js] Script loaded. Starting auto-mount...');
 				
 				const container = document.createElement('div');
 				container.id = 'caixa-navigator-root';
-				container.style.position = 'fixed';
-				container.style.top = '10px';
-				container.style.right = '10px';
-				container.style.zIndex = '9999';
-				container.style.backgroundColor = 'white';
-				container.style.border = '1px solid black';
-				container.style.padding = '10px';
 				document.body.appendChild(container);
 				
 				const root = createRoot(container);
@@ -500,7 +497,6 @@ registerLog('[caixaNavigation.js] Script loaded. Starting auto-mount...');
 				registerLog('[caixaNavigation.js] No pre-seeded data found.');
 			}
 		} catch (e: any) {
-			// Use both logging methods for maximum visibility on errors
 			console.error(`[caixaNavigation.js] Auto-mount failed: ${e.message}`, e);
 			registerLog(`[caixaNavigation.js] Auto-mount failed: ${e.message}`);
 			printLogs();

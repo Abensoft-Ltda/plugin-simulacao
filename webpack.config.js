@@ -12,6 +12,19 @@ module.exports = {
                 use: 'babel-loader',
                 exclude: /node_modules/,
             },
+            {
+                test: /\.css$/,
+                use: [
+                    'style-loader',
+                    {
+                        loader: 'css-loader',
+                        options: {
+                            modules: false
+                        }
+                    }
+                ],
+                exclude: /node_modules/
+            }
         ],
     },
     resolve: {

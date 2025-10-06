@@ -24,7 +24,14 @@
     {
       "resources": [
         "assets/*.js",
-        "assets/*.css"
+        "assets/*.css",
+        "*.js",
+        "*.css",
+        "App.*.js",
+        "Validation.*.js",
+        "logger.*.js",
+        "caixaNavigation.js",
+        "caixaNavigationSecondStep.js"
       ],
       "matches": [
         "https://*.caixa.gov.br/*",

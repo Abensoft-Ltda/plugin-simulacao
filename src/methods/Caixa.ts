@@ -1,4 +1,5 @@
-import { CaixaFields, CaixaInput, CaixaFieldsResult } from "./Validation";
+import { CaixaFields } from "./Validation";
+import type { CaixaInput, CaixaFieldsResult } from "./Validation";
 
 export class Caixa {
     private rawData: CaixaInput;

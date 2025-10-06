@@ -29,23 +29,9 @@ export const AutoMountComponent: React.FC<AutoMountComponentProps> = ({
           const container = document.createElement('div');
           container.id = containerId;
           
-          // Apply default styles
-          const defaultStyles = {
-            position: 'fixed',
-            top: '10px',
-            right: '10px',
-            zIndex: '9999',
-            backgroundColor: 'white',
-            border: '1px solid black',
-            padding: '10px'
-          };
-          
-          // Merge default styles with custom styles
-          const finalStyles = { ...defaultStyles, ...containerStyles };
-          
-          // Apply all styles to the container
-          Object.assign(container.style, finalStyles);
-          
+          // Only apply custom styles if provided, no defaults
+          Object.assign(container.style, containerStyles);
+
           document.body.appendChild(container);
           
           const root = createRoot(container);

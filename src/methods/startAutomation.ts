@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { STORAGE_KEY, writeLog, readLogs, clearLogs as clearStoredLogs, type LogEntry } from '../lib/logger';
+import { writeLog, readLogs, clearLogs as clearStoredLogs, type LogEntry } from '../lib/logger';
 
-const data = {
+const defaultData = {
     target: "Caixa",
     tipo_imovel: "Aquisição de Imóvel Novo",
     valor_imovel: 450000.00,
@@ -26,8 +26,6 @@ export const useAutomation = () => {
         const freshLogs = await readLogs();
         setLogs(freshLogs);
     }, []);
-
-    chrome.storage.local.remove(STORAGE_KEY);
 
     useEffect(() => {
         refreshLogs();
@@ -59,15 +57,24 @@ export const useAutomation = () => {
         }
     }, [refreshLogs]);
 
-    const startSimulation = () => {
-        writeLog('[popup] Sending startSimulation message to background script.');
-        chrome.runtime.sendMessage({ action: "startSimulation", data: data }, (response) => {
-            if (chrome.runtime.lastError) {
-                writeLog(`[popup] Error sending message: ${chrome.runtime.lastError.message}`);
-            } else {
-                writeLog(`[popup] Received response from background: ${response?.status}`);
-            }
-        });
+    const startSimulation = async (banks: string[] = ['caixa']) => {
+        chrome.storage.local.remove(['simulationResult']);
+        writeLog(`[popup] Starting simulation for banks: ${banks.join(', ')}`);
+        await Promise.all(
+            banks.map(bank => {
+                return new Promise((resolve) => {
+                    const bankData = { ...defaultData, target: bank };
+                    chrome.runtime.sendMessage({ action: "startSimulationRequest", data: { targets: [bankData] } }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            writeLog(`[popup] Error for ${bank}: ${chrome.runtime.lastError.message}`);
+                        } else {
+                            writeLog(`[popup] ${bank} response: ${response?.status}`);
+                        }
+                        resolve(response);
+                    });
+                });
+            })
+        );
     };
 
     const clearLogs = async () => {

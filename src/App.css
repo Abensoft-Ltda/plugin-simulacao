@@ -1,3 +1,16 @@
+/* Custom scrollbar for dark theme */
+.scrollbar-dark::-webkit-scrollbar {
+  width: 8px;
+  background: #2d3748;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: #4a5568;
+  border-radius: 4px;
+}
+.scrollbar-dark {
+  scrollbar-color: #4a5568 #2d3748;
+  scrollbar-width: thin;
+}
 @import "tailwindcss";
 
 body {
