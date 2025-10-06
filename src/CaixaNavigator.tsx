@@ -149,16 +149,16 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 
 				let finalValue = '';
 				if (el.tagName === 'SELECT') {
-					// For comboboxes, the visible value is in the _input element
+					// Para comboboxes, o valor visível está no elemento _input
 					const comboboxInput = document.querySelector(`#${el.id}_input`) as HTMLInputElement;
 					if (comboboxInput) {
 						finalValue = comboboxInput.value;
 					} else {
-						// Fallback for standard selects
+						// Fallback para selects padrão
 						finalValue = (el as HTMLSelectElement).value;
 					}
 				} else {
-					// For standard inputs
+					// Para inputs padrão
 					finalValue = (el as HTMLInputElement).value;
 				}
 
@@ -303,8 +303,8 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 		}
 	}
 
-	// Function to process all financing options and extract data is now in CaixaNavigatorSecondStep.tsx
-	
+	// Função para processar todas as opções de financiamento e extrair dados agora está em CaixaNavigatorSecondStep.tsx
+
 	React.useEffect(() => {
 		if (!isCaixaPage) {
 			registerLog(' Not on caixa.gov.br, skipping automation');
@@ -315,11 +315,11 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 		const runAutomation = async () => {
 			registerLog(' Starting automation sequence.');
 			
-			// --- Wait for page to be ready ---
+			// --- Aguardar página estar pronta ---
 			registerLog(' Waiting 2 seconds for page to fully load...');
 			await new Promise(resolve => setTimeout(resolve, 2000));
 			
-			// --- Step 1: Fill the first page ---
+			// --- Etapa 1: Preencher a primeira página ---
 			registerLog(' Waiting for the first form to be ready...');
 			const firstPageKeyElement = await waitForElement('#valorImovel');
 			if (!firstPageKeyElement) {
@@ -337,11 +337,11 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			}
 			registerLog(' Clicking "Próxima etapa".');
 			(nextButton1 as HTMLElement).click();
-			await new Promise(resolve => setTimeout(resolve, 2000)); // Longer wait after click
-			
-			// --- Step 3: Fill the second page ---
+			await new Promise(resolve => setTimeout(resolve, 2000)); // Espera maior após o clique
+
+			// --- Etapa 3: Preencher a segunda página ---
 			registerLog(' Waiting for the second form to be ready...');
-			const secondPageKeyElement = await waitForElement('#dataNascimento'); // A field on the second page
+			const secondPageKeyElement = await waitForElement('#dataNascimento'); // Um campo na segunda página
 			if (!secondPageKeyElement) {
 				registerLog(' Automation failed: Second page form did not load.');
 				return;
@@ -350,7 +350,7 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			printLogs();
 			await fillSecondPage(fields);
 			
-			const nextButton2 = await waitForElement('#btn_next2'); // Updated ID from HTML
+			const nextButton2 = await waitForElement('#btn_next2'); // ID atualizado do HTML
 			if (!nextButton2) {
 				registerLog(' Automation failed: "Next" button not found on second page.');
 				return;
@@ -378,13 +378,13 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 		registerLog(' Filling first page...');
 		registerLog(' Clicking radio button for PF...');
 
-		// Select person type (always Física)
+		// Selecionar tipo de pessoa (sempre Física)
 		registerLog(' Selecting person type: Física');
 		const selector = '#pessoaF';
 		const el = document.querySelector(selector) as HTMLInputElement;
 		if (el) {
 			el.click();
-			await new Promise(resolve => setTimeout(resolve, 1500)); // Longer wait
+			await new Promise(resolve => setTimeout(resolve, 1500)); // Espera maior
 		} else {
 			registerLog(` Person type radio button not found: ${selector}`);
 		}
@@ -402,31 +402,31 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			await simulateNaturalInput('#grupoTipoFinanciamento_input', capitalizeWords(fields.categoria_imovel));
 		}
 
-		// Fill valor_imovel
+		// Preencher valor_imovel
 		if (fields.valor_imovel) {
 			await simulateNaturalInput('#valorImovel', fields.valor_imovel);
 		}
 
-		// Fill UF
+		// Preencher UF
 		if (fields.uf) {
 			await simulateNaturalInput('#uf', fields.uf.toUpperCase());
 		}
 
-		// Fill cidade
+		// Preencher cidade
 		if (fields.cidade) {
-			// This also depends on the UF selection.
-			await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5s for dependent dropdown to populate
+			// Isso também depende da seleção de UF.
+			await new Promise(resolve => setTimeout(resolve, 1500)); // Aguardar 1.5s para o dropdown dependente ser populado
 			registerLog(` Filling cidade: ${fields.cidade}`);
 			await simulateAutocomplete('#cidade', fields.cidade.toUpperCase());
 		}
 
-		// Fill possui_imovel checkbox
+		// Preencher checkbox possui_imovel
 		if (fields.possui_imovel === 'sim') {
 			registerLog(' Checking possui_imovel');
 			const checkbox = document.querySelector('#imovelCidade') as HTMLInputElement;
 			if (checkbox && !checkbox.checked) {
 				checkbox.click();
-				await new Promise(resolve => setTimeout(resolve, 1500)); // Longer wait
+				await new Promise(resolve => setTimeout(resolve, 1500)); // Espera maior
 			} else {
 				registerLog(' imovelCidade checkbox not found or already checked');
 			}
@@ -437,23 +437,23 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 	async function fillSecondPage(fields: Record<string, any>) {
 		registerLog(' Filling second page...');
 		
-		// Fill data_nascimento
+		// Preencher data_nascimento
 		if (fields.data_nascimento) {
 			await setInstantValue('#dataNascimento', fields.data_nascimento);
 		}
 		
-		// Fill renda_familiar
+		// Preencher renda_familiar
 		if (fields.renda_familiar) {
 			await simulateNaturalInput('#rendaFamiliarBruta', fields.renda_familiar);
 		}
 		
-		// Fill beneficiado_fgts checkbox
+		// Preencher checkbox beneficiado_fgts
 		if (fields.beneficiado_fgts === 'sim') {
 			registerLog(' Checking beneficiado_fgts');
 			const checkbox = document.querySelector('#vaContaFgtsS') as HTMLInputElement;
 			if (checkbox && !checkbox.checked) {
 				checkbox.click();
-				await new Promise(resolve => setTimeout(resolve, 1500)); // Longer wait
+				await new Promise(resolve => setTimeout(resolve, 1500)); // Espera maior
 			} else {
 				registerLog(' vaContaFgtsS checkbox not found or already checked');
 			}

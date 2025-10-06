@@ -23,13 +23,13 @@ export const AutoMountComponent: React.FC<AutoMountComponentProps> = ({
       try {
         const data = (window as any).__CAIXA_AUTO_MOUNT_DATA;
         if (data) {
-          registerLog(`[${logPrefix}] Auto-mounting with pre-seeded data.`);
+          registerLog(`[${logPrefix}] Auto-montando com dados pré-carregados.`);
           printLogs();
           
           const container = document.createElement('div');
           container.id = containerId;
           
-          // Only apply custom styles if provided, no defaults
+          // Aplicar apenas estilos personalizados se fornecidos, sem padrões
           Object.assign(container.style, containerStyles);
 
           document.body.appendChild(container);
@@ -38,12 +38,12 @@ export const AutoMountComponent: React.FC<AutoMountComponentProps> = ({
           root.render(React.createElement(Component, { data }));
 
         } else {
-          registerLog(`[${logPrefix}] No pre-seeded data found.`);
+          registerLog(`[${logPrefix}] Nenhum dado pré-carregado encontrado.`);
         }
       } catch (e: any) {
-        // Use both logging methods for maximum visibility on errors
-        console.error(`[${logPrefix}] Auto-mount failed: ${e.message}`, e);
-        registerLog(`[${logPrefix}] Auto-mount failed: ${e.message}`);
+        // Usar ambos os métodos de log para máxima visibilidade em erros
+        console.error(`[${logPrefix}] Auto-montagem falhou: ${e.message}`, e);
+        registerLog(`[${logPrefix}] Auto-montagem falhou: ${e.message}`);
         printLogs();
       }
     }
@@ -51,5 +51,5 @@ export const AutoMountComponent: React.FC<AutoMountComponentProps> = ({
     main();
   }, [Component, containerId, containerStyles, logPrefix, registerLog, printLogs]);
 
-  return null; // This component doesn't render anything itself
+  return null; // Este componente não renderiza nada por si só
 };

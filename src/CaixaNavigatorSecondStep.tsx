@@ -134,7 +134,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					registerLog(` Click executed, waiting for response...`);
 					await new Promise(resolve => setTimeout(resolve, 2000));
 
-					// Check what happened after clicking
+					// Verificar o que aconteceu após o clique
 					registerLog(` Analyzing page response...`);
 
 					const errorElements = document.querySelectorAll('.erro_feedback');
@@ -198,7 +198,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 			lendingOptions.if = "caixa";
 
-			// Send the final result back to the background script with retry logic using window.postMessage bridge
+			// Enviar o resultado final de volta ao script de background com lógica de retry usando ponte window.postMessage
 			const sendResultsWithRetry = async (retries = 3) => {
 				for (let i = 0; i < retries; i++) {
 					try {
@@ -227,21 +227,21 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 							window.addEventListener('message', responseHandler);
 
-							// Send message via bridge
+							// Enviar mensagem via ponte
 							window.postMessage({
 								type: 'CAIXA_TO_BACKGROUND',
 								messageId: messageId,
 								payload: { action: "simulationResult", payload: lendingOptions }
 							}, '*');
 
-							// Timeout after 5 seconds
+							// Timeout após 5 segundos
 							setTimeout(() => {
 								window.removeEventListener('message', responseHandler);
 								reject(new Error('Response timeout'));
 							}, 5000);
 						});
 						
-						// If we get here, the message was sent successfully
+						// Se chegarmos aqui, a mensagem foi enviada com sucesso
 						registerLog('Message sent successfully, breaking retry loop');
 						break;
 						
@@ -250,7 +250,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 						console.error('Exception sending results:', e);
 						
 						if (i === retries - 1) {
-							// Last attempt failed, try storing directly in localStorage as fallback
+							// Última tentativa falhou, tentar armazenar diretamente em localStorage como fallback
 							registerLog('All retry attempts failed, storing in localStorage as fallback...');
 							try {
 								localStorage.setItem('caixa_simulation_result', JSON.stringify(lendingOptions));
@@ -259,7 +259,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 								registerLog(`Failed to store in localStorage: ${storageError.message}`);
 							}
 						} else {
-							// Wait before retrying
+							// Aguardar antes de tentar novamente
 							await new Promise(resolve => setTimeout(resolve, 1000));
 						}
 					}
@@ -522,7 +522,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 // registerLog('[caixaNavigationSecondStep.js] Script loaded. Starting auto-mount...');
 
-// Auto-mount the CaixaNavigatorSecondStep component using AutoMountComponent
+// Auto-montar o componente CaixaNavigatorSecondStep usando AutoMountComponent
 const AutoMountCaixaNavigatorSecondStep = () => (
 	<AutoMountComponent
 		Component={CaixaNavigatorSecondStep}
@@ -534,7 +534,7 @@ const AutoMountCaixaNavigatorSecondStep = () => (
 	/>
 );
 
-// Initialize the auto-mount component
+// Inicializar o componente de auto-montagem
 const initializeAutoMount = () => {
 	const mountPoint = document.createElement('div');
 	mountPoint.id = 'auto-mount-second-step-point';

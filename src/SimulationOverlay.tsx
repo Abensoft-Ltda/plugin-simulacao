@@ -20,14 +20,14 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
 	const [isWatching, setIsWatching] = useState(false);
 	const [showSuccess, setShowSuccess] = useState(false);
 
-	// Show success animation when complete
+	// Mostrar animação de sucesso quando completo
 	useEffect(() => {
 		if (isComplete) {
 			setShowSuccess(true);
 		}
 	}, [isComplete]);
 
-	// Load bank icons CSS
+	// Carregar CSS dos ícones bancários
 	useEffect(() => {
 		const linkId = 'bank-icons-css';
 		if (!document.getElementById(linkId)) {
@@ -40,7 +40,7 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
 	}, []);
 
 	if (isWatching) {
-		// Show the component without the overlay - using proper gray theme
+		// Mostrar o componente sem o overlay - usando tema cinza apropriado
 		return (
 			<div className="fixed top-4 right-4 z-[999999] max-w-md max-h-[90vh] overflow-auto bg-gray-800 border-2 border-gray-600 rounded-lg p-4 shadow-2xl">
 				<button
@@ -59,7 +59,7 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
 		);
 	}
 
-	// Show success animation when complete
+	// Mostrar animação de sucesso quando completo
 	if (showSuccess) {
 		return (
 			<div className="fixed inset-0 w-screen h-screen bg-gray-700 z-[999999] flex items-center justify-center transition-opacity duration-500 ease-in-out">
@@ -75,32 +75,32 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
 		);
 	}
 
-	// Show the full-screen overlay matching popup.tsx style
+	// Mostrar overlay em tela cheia correspondendo ao estilo popup.tsx
 	return (
 		<div className="fixed inset-0 w-screen h-screen bg-gray-700 z-[999999] flex flex-col items-center justify-center p-6">
-			{/* Animated Bank Icon */}
+			{/* Ícone do Banco Animado */}
 			<div className="mb-6 animate-pulse">
 				<div className="w-32 h-32 bg-gray-800 rounded-full flex justify-center items-center shadow-2xl border-4 border-gray-600">
 					<i className={`${bankIcon} text-[70px]`} style={{ lineHeight: 1, filter: 'brightness(2.5) contrast(1.2)' }}></i>
 				</div>
 			</div>
 
-			{/* Title - WHITE TEXT */}
+			{/* Título - TEXTO BRANCO */}
 			<h1 className="text-4xl font-bold mb-3 text-center drop-shadow-lg" style={{ color: 'white' }}>
 				{title}
 			</h1>
 
-			{/* Subtitle - WHITE TEXT */}
+			{/* Subtítulo - TEXTO BRANCO */}
 			<p className="text-lg mb-2 text-center drop-shadow-md" style={{ color: 'white' }}>
 				{subtitle}
 			</p>
 
-			{/* Bank Name - WHITE TEXT */}
+			{/* Nome do Banco - TEXTO BRANCO */}
 			<p className="text-sm mb-8 text-center drop-shadow-md" style={{ color: 'white' }}>
 				{bankName}
 			</p>
 
-			{/* Watch Process Button - DARK GRAY TEXT */}
+			{/* Botão Exibir Processo - TEXTO CINZA ESCURO */}
 			<button
 				onClick={() => setIsWatching(true)}
 				className="px-8 py-3 bg-main-green hover:bg-green-600 border-none rounded-lg text-base font-bold cursor-pointer shadow-lg transition-all duration-300 ease-in-out hover:scale-105"
@@ -109,7 +109,7 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
 				Exibir processo de simulação
 			</button>
 
-			{/* Loading Spinner - WHITE */}
+			{/* Spinner de Carregamento - BRANCO */}
 			<div className="mt-10 flex gap-2">
 				<div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
 				<div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
