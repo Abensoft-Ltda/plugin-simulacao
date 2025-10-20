@@ -1,13 +1,14 @@
 import React from 'react';
-import { createRoot } from 'react-dom/client';
-import { AutoMountComponent } from './AutoMountComponent';
 import { SimulationOverlay } from './SimulationOverlay';
 import './App.css';
+import { SimulationPayload } from './lib/SimulationPayload';
+import { autoMountNavigator } from './lib/autoMountNavigator';
 
 let logs: string[] = [];
 
 function registerLog(message: string) {
-	logs.push(message);
+	const timestampedMessage = `${message} -- [${new Date().toLocaleTimeString()}]`;
+	logs.push(timestampedMessage);
 }
 
 function printLogs() {
@@ -15,63 +16,206 @@ function printLogs() {
 	logs.forEach(msg => console.log(msg));
 }
 
+function checkForErrorDialog(): boolean {
+	const errorDialog = document.querySelector('#ui-id-34.ui-dialog-content.ui-widget-content');
+
+	if (errorDialog) {
+		const errorText = errorDialog.textContent?.trim();
+		registerLog(`Found error dialog #ui-id-34 with text: "${errorText}"`);
+
+		if (errorText?.includes('Campo obrigatório não informado')) {
+			registerLog('Error dialog contains "Campo obrigatório não informado" - refreshing page');
+			window.location.reload();
+			return true;
+		}
+	}
+
+	const allDialogs = document.querySelectorAll('.ui-dialog-content, [class*="ui-dialog"]');
+	for (const dialog of allDialogs) {
+		const dialogText = dialog.textContent?.trim();
+		if (dialogText?.includes('Campo obrigatório não informado')) {
+			registerLog(`Found error dialog with class "${dialog.className}" containing error text - refreshing page`);
+			window.location.reload();
+			return true;
+		}
+	}
+
+	return false;
+}
+
 export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> = ({ data }) => {
-	
+
 	const [isComplete, setIsComplete] = React.useState(false);
+	const hasSentResultsRef = React.useRef(false);
+	const sanitizeFailureMessage = (mensagem: string): string => {
+		const cleaned = (mensagem ?? '').toString().trim();
+		const normalized = cleaned.length > 0 ? cleaned : 'Erro não especificado';
+		const prefix = 'caixa:';
+		return normalized.toLowerCase().startsWith(prefix) ? normalized : `${prefix} ${normalized}`;
+	};
+
+	const buildFailureEntry = (mensagem: string) => SimulationPayload.ensureEntry({ tipo_amortizacao: sanitizeFailureMessage(mensagem) }, 'caixa');
+
+	const sendFailureResult = async (mensagem: string) => {
+		if (hasSentResultsRef.current) {
+			return;
+		}
+
+		const payload = new SimulationPayload('caixa', 'failure');
+		payload.addEntry(buildFailureEntry(mensagem));
+		const enviado = await sendResultsWithRetry(payload);
+
+		if (enviado) {
+			hasSentResultsRef.current = true;
+			setIsComplete(true);
+		}
+	};
+
+	const sendResultsWithRetry = async (
+		payload: SimulationPayload,
+		retries = 3
+	): Promise<boolean> => {
+		const normalized = payload.toJSON();
+
+		for (let attempt = 1; attempt <= retries; attempt++) {
+			try {
+				registerLog(` Enviando resultado da Caixa ao background (tentativa ${attempt}/${retries})...`);
+				printLogs();
+
+				await new Promise<void>((resolve, reject) => {
+					let completed = false;
+
+					const responseHandler = (event: MessageEvent) => {
+						if (event.source !== window) return;
+						if (event.data.type === 'BACKGROUND_TO_CAIXA') {
+							window.removeEventListener('message', responseHandler);
+							completed = true;
+							resolve();
+						}
+					};
+
+					window.addEventListener('message', responseHandler);
+
+					window.postMessage({
+						type: 'CAIXA_TO_BACKGROUND',
+						payload: { action: "simulationResult", payload: normalized }
+					}, '*');
+
+					setTimeout(() => {
+						window.removeEventListener('message', responseHandler);
+						if (!completed) {
+							reject(new Error('Tempo de resposta esgotado ao enviar resultado da Caixa.'));
+						}
+					}, 5000);
+				});
+
+				registerLog(' Resultado da Caixa enviado com sucesso ao background.');
+				printLogs();
+				return true;
+			} catch (error: any) {
+				registerLog(` Falha ao enviar resultado na tentativa ${attempt}: ${error?.message || error}`);
+				printLogs();
+				if (attempt < retries) {
+					await new Promise(resolve => setTimeout(resolve, 1000));
+				} else {
+					registerLog(' Limite de tentativas de envio atingido para os resultados da Caixa.');
+					printLogs();
+					try {
+						const fallbackKey = 'caixa_simulation_result';
+						localStorage.setItem(fallbackKey, JSON.stringify(normalized));
+						registerLog(` Resultado armazenado localmente em "${fallbackKey}" como fallback.`);
+						printLogs();
+					} catch (storageError: any) {
+						registerLog(` Falha ao armazenar resultado localmente: ${storageError?.message || storageError}`);
+						printLogs();
+					}
+					return false;
+				}
+			}
+		}
+
+		return false;
+	};
 
 	registerLog(`[CaixaNavigatorSecondStep] Received data: ${JSON.stringify(data)}`);
 	const isCaixaPage = typeof window !== 'undefined' && /\.caixa\.gov\.br$/.test(window.location.hostname);
-	
+
 	async function processFinancingOptions(): Promise<any> {
-		registerLog(' ##### processFinancingOptions() CALLED - FUNCTION IS EXECUTING #####');
 		registerLog(` Current URL: ${window.location.href}`);
 		registerLog(` Page title: ${document.title}`);
-		
+
 		try {
-			registerLog(' ##### processFinancingOptions() CALLED - FUNCTION IS EXECUTING #####');
-			
-			registerLog('⏳  Waiting 2 seconds for page to be fully loaded...');
-			await new Promise(resolve => setTimeout(resolve, 2000));
-			
-			const passo3 = document.querySelector('#passo3');
-			registerLog(` Found #passo3 element: ${!!passo3}`);
-			
-			if (!passo3) {
-				console.error(' #passo3 not found - we might not be on the options page');
+			// Initial error check
+			if (checkForErrorDialog()) {
+				const mensagem = 'A página da Caixa apresentou um aviso de erro antes de iniciar a coleta.';
+				registerLog(` ${mensagem}`);
+				await sendFailureResult(mensagem);
 				return null;
 			}
-			
+
+			registerLog('Waiting 2 seconds for page to be fully loaded...');
+			await new Promise(resolve => setTimeout(resolve, 2000));
+
+			// Check for error dialog after page load
+			if (checkForErrorDialog()) {
+				const mensagem = 'A página da Caixa apresentou um aviso logo após o carregamento.';
+				registerLog(` ${mensagem}`);
+				await sendFailureResult(mensagem);
+				return null;
+			}
+
+			const passo3 = document.querySelector('#passo3');
+			registerLog(` Found #passo3 element: ${!!passo3}`);
+
+			if (!passo3) {
+				const mensagem = 'A tela de opções da Caixa não carregou totalmente para continuar a simulação.';
+				console.error(mensagem);
+				registerLog(` ${mensagem}`);
+				await sendFailureResult(mensagem);
+				return null;
+			}
+
 			registerLog(' Searching for financing option links...');
-			
+
 			const optionLinks = document.querySelectorAll('a.js-form-next');
 			registerLog(` Found ${optionLinks.length} js-form-next links (no filtering applied)`);
-			
-			
+
+
 			Array.from(optionLinks).forEach((link, index) => {
 				const text = link.textContent?.trim();
 				const onclick = link.getAttribute('onclick');
 				registerLog(` Link ${index + 1}: "${text}" - onclick: ${onclick?.substring(0, 100)}... hasClass: ${link.classList.contains('js-form-next')} tagName: ${link.tagName}`);
 			});
-			
+
 			if (optionLinks.length === 0) {
-				console.error(' No financing option links found!');
-				registerLog(' No financing option links found!');
+				const mensagem = 'Nenhuma opção de financiamento foi localizada na página da Caixa.';
+				console.error(mensagem);
+				registerLog(` ${mensagem}`);
+				await sendFailureResult(mensagem);
 				return null;
 			}
 
-			const lendingOptions: any = { result: [] };
-			
+			const payload = new SimulationPayload('caixa');
+
 			for (let i = 0; i < optionLinks.length; i++) {
 				const link = optionLinks[i] as HTMLAnchorElement;
 				const optionName = link.textContent?.trim() || `Option ${i + 1}`;
-				
+
 				if (optionName.toLowerCase().includes('clique aqui')) {
 					registerLog(` Skipping "clique aqui" link: "${optionName}"`);
 					continue;
 				}
 
 				registerLog(` ===== Processing option ${i + 1}/${optionLinks.length}: "${optionName}" =====`);
-				
+
+				// Check for error dialog before processing each option
+				if (checkForErrorDialog()) {
+					const mensagem = 'A Caixa exibiu um aviso antes de coletar todas as opções.';
+					registerLog(` ${mensagem}`);
+					await sendFailureResult(mensagem);
+					return null;
+				}
+
 				try {
 					registerLog(` Executing JS destruction script...`);
 					const jsDestroyScript = `
@@ -85,14 +229,14 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 						}
 						return removedCount;
 					`;
-					
+
 					const numRemoved = (window as any).eval(`(function() { ${jsDestroyScript} })()`);
 					registerLog(` JS destruction removed ${numRemoved} unwanted error elements`);
-					
+
 					registerLog(` Attempting to click link...`);
-					
+
 					let clickSuccess = false;
-					
+
 					try {
 						link.click();
 						registerLog(` Direct click successful`);
@@ -101,7 +245,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					} catch (error) {
 						registerLog(` Direct click failed: ${error}`);
 					}
-					
+
 					if (!clickSuccess) {
 						try {
 							const onclickAttr = link.getAttribute('onclick');
@@ -114,7 +258,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 							registerLog(` Onclick execution failed: ${error}`);
 						}
 					}
-					
+
 					if (!clickSuccess) {
 						try {
 							registerLog(` Trying dispatched click event`);
@@ -125,7 +269,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 							registerLog(` Event dispatch failed: ${error}`);
 						}
 					}
-					
+
 					if (!clickSuccess) {
 						registerLog(` All click approaches failed for option "${optionName}"`);
 						continue;
@@ -134,48 +278,50 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					registerLog(` Click executed, waiting for response...`);
 					await new Promise(resolve => setTimeout(resolve, 2000));
 
-					// Verificar o que aconteceu após o clique
-					registerLog(` Analyzing page response...`);
+					if (checkForErrorDialog()) {
+						const mensagem = `A Caixa exibiu um erro ao abrir a opção "${optionName}".`;
+						registerLog(` ${mensagem}`);
+						await sendFailureResult(mensagem);
+						return null;
+					}
 
-					const errorElements = document.querySelectorAll('.erro_feedback');
-					registerLog(` Found ${errorElements.length} .erro_feedback elements`);
-					
+					registerLog(` Analyzing page response...`);
+					const erroEls = Array.from(document.querySelectorAll('.erro_feedback'));
+					registerLog(` Found ${erroEls.length} .erro_feedback elements`);
+
 					let errorFound = false;
 
-					if (errorElements.length > 0) {
-						errorElements.forEach((errorEl, index) => {
-							const errorText = errorEl.textContent?.trim() || '';
-							registerLog(` Error element ${index + 1}: "${errorText.substring(0, 100)}..."`);
-						});
+					if (erroEls.length > 0) {
+						const previousCount = payload.entryCount();
 
-						for (const errorEl of errorElements) {
-							const errorText = errorEl.textContent?.toLowerCase() || '';
-							
-							if (errorText.includes('os resultados obtidos representam apenas uma simulação') ||
-								errorText.includes('caso tenha feito opção pelo crédito imobiliário')) {
-								registerLog(` Skipping generic disclaimer error`);
+						for (const e of erroEls) {
+							const txtRaw = (e.textContent || '').trim();
+							if (!txtRaw) continue;
+
+							const elementId = e.id?.toLowerCase() || '';
+							if (elementId.includes('divobservacao') || elementId.includes('divtextoexplicativo')) {
+								registerLog(` Ignorando erro com ID informativo (${e.id}): ${txtRaw.substring(0, 200)}`);
 								continue;
 							}
 
-							if (errorText.includes('insuficiente') || errorText.includes('valor')) {
-								registerLog(` Found relevant error for option "${optionName}": ${errorEl.textContent?.substring(0, 200)}`);
-								lendingOptions.result.push({
-									erro: errorEl.textContent?.trim(),
-									tipo_amortizacao: optionName
-								});
-								errorFound = true;
-								break;
-							}
+							registerLog(` Captured erro_feedback: ${txtRaw.substring(0, 400)}`);
+							payload.addEntry(buildFailureEntry(txtRaw));
 						}
+
+						errorFound = payload.entryCount() > previousCount;
 					}
 
 					if (!errorFound) {
-						registerLog(` No error found, looking for results table...`);
+						if (erroEls.length > 0) {
+							registerLog(` Nenhum erro relevante encontrado nas mensagens. Tentando extrair tabela de resultados.`);
+						} else {
+							registerLog(` No .erro_feedback found; attempting to extract result table`);
+						}
 						const tableData = await extractTableData(optionName);
 						if (tableData) {
 							registerLog(` Successfully extracted table data`);
 							printLogs();
-							lendingOptions.result.push(tableData);
+							payload.addEntry(tableData);
 						} else {
 							registerLog(` No table data found`);
 						}
@@ -196,83 +342,20 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 				}
 			}
 
-			lendingOptions.if = "caixa";
+			if (!payload.hasEntries()) {
+				registerLog(' Nenhuma informação válida foi coletada nas opções da Caixa (resultado vazio).');
+				printLogs();
+			}
 
-			// Enviar o resultado final de volta ao script de background com lógica de retry usando ponte window.postMessage
-			const sendResultsWithRetry = async (retries = 3) => {
-				for (let i = 0; i < retries; i++) {
-					try {
-						registerLog(`Sending final results to background script (attempt ${i + 1}/${retries})...`);
-						registerLog(`Final payload being sent: ${JSON.stringify(lendingOptions)}`);
-						
-						await new Promise((resolve, reject) => {
-							const messageId = Date.now() + Math.random();
-
-							const responseHandler = (event: MessageEvent) => {
-								if (event.source !== window) return;
-								if (event.data.type === 'BACKGROUND_TO_CAIXA') {
-									window.removeEventListener('message', responseHandler);
-
-									if (event.data.success) {
-										registerLog(`Results sent successfully (attempt ${i + 1}). Response: ${JSON.stringify(event.data.response)}`);
-										console.log('Background response:', event.data.response);
-										resolve(event.data.response);
-									} else {
-										registerLog(`Error sending results (attempt ${i + 1}): ${event.data.error}`);
-										console.error('Bridge error:', event.data.error);
-										reject(new Error(event.data.error));
-									}
-								}
-							};
-
-							window.addEventListener('message', responseHandler);
-
-							// Enviar mensagem via ponte
-							window.postMessage({
-								type: 'CAIXA_TO_BACKGROUND',
-								messageId: messageId,
-								payload: { action: "simulationResult", payload: lendingOptions }
-							}, '*');
-
-							// Timeout após 5 segundos
-							setTimeout(() => {
-								window.removeEventListener('message', responseHandler);
-								reject(new Error('Response timeout'));
-							}, 5000);
-						});
-						
-						// Se chegarmos aqui, a mensagem foi enviada com sucesso
-						registerLog('Message sent successfully, breaking retry loop');
-						break;
-						
-					} catch (e: any) {
-						registerLog(`Exception while sending results (attempt ${i + 1}): ${e.message}`);
-						console.error('Exception sending results:', e);
-						
-						if (i === retries - 1) {
-							// Última tentativa falhou, tentar armazenar diretamente em localStorage como fallback
-							registerLog('All retry attempts failed, storing in localStorage as fallback...');
-							try {
-								localStorage.setItem('caixa_simulation_result', JSON.stringify(lendingOptions));
-								registerLog('Results stored in localStorage as fallback');
-							} catch (storageError: any) {
-								registerLog(`Failed to store in localStorage: ${storageError.message}`);
-							}
-						} else {
-							// Aguardar antes de tentar novamente
-							await new Promise(resolve => setTimeout(resolve, 1000));
-						}
-					}
-				}
-			};
-			
-			await sendResultsWithRetry();
-
-			return lendingOptions.result.length > 0 ? lendingOptions : null;
+			const enviado = await sendResultsWithRetry(payload);
+			hasSentResultsRef.current = enviado;
+			return payload.toJSON();
 
 		} catch (error: any) {
-			registerLog(` Failed to process financing options: ${error.message}`);
+			const mensagem = `Falha ao processar as opções da Caixa: ${error.message}`;
+			registerLog(` ${mensagem}`);
 			printLogs();
+			await sendFailureResult(mensagem);
 			return null;
 		}
 	}
@@ -299,7 +382,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			if (backButton) {
 				registerLog(` Clicking back button from SUCCESS page: #botaoVoltar`);
 				(backButton as HTMLElement).click();
-				await new Promise(resolve => setTimeout(resolve, 2000)); 
+				await new Promise(resolve => setTimeout(resolve, 2000));
 			} else {
 				registerLog(` Could not find back button on success page.`);
 			}
@@ -314,7 +397,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			// Look for the results table
 			registerLog(` Looking for table.simple-table...`);
 			const table = document.querySelector('table.simple-table');
-			
+
 			if (!table) {
 				registerLog(` No table.simple-table found, checking for other table types...`);
 				const allTables = document.querySelectorAll('table');
@@ -326,7 +409,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			}
 
 			registerLog(` Found results table for option "${optionName}" with ${table.querySelectorAll('tr').length} rows`);
-			
+
 			// Extract table data
 			const rows = table.querySelectorAll('tr');
 			const tableData: any = {
@@ -344,14 +427,13 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					const key = (cells[0].textContent?.trim() || '').toLowerCase();
 					const valueCell = cells[1];
 
-					// Try to get value from center tag first, then from td directly
 					const centerTag = valueCell.querySelector('center');
 					const value = (centerTag?.textContent?.trim() || valueCell.textContent?.trim() || '').replace(/\s+/g, ' ');
 
 					registerLog(` Row ${rowIndex + 1}: "${key}" = "${value}"`);
-					
+
 					if (key && value) {
-						// Map fields based on key text (case-insensitive)
+
 						if (key.includes('amortiza')) {
 							tableData.tipo_amortizacao = `${value} ${optionName}`.trim();
 							registerLog(` Mapped tipo_amortizacao: ${tableData.tipo_amortizacao}`);
@@ -412,43 +494,11 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			}
 
 			registerLog(` Final table data: ${JSON.stringify(tableData)}`);
-			return tableData;
+			return SimulationPayload.ensureEntry(tableData, 'caixa');
 
 		} catch (error: any) {
 			registerLog(` Error extracting table data: ${error.message}`);
 			return null;
-		}
-	}
-
-	async function goBackToOptionsPage(): Promise<void> {
-		try {
-			// More specific selectors first, removed 'button.js-form-prev'
-			const backSelectors = [
-				'button[onclick*="voltarTelaEnquadrar"]',
-				'a[onclick*="voltarTelaEnquadrar"]',
-				'#botaoVoltar'
-			];
-
-			for (const selector of backSelectors) {
-				const backButton = document.querySelector(selector);
-				if (backButton) {
-					registerLog(` Clicking back button: ${selector}`);
-					(backButton as HTMLElement).click();
-					registerLog(` Back navigation successful`);
-					printLogs();
-					// Wait for the page to reload
-					await new Promise(resolve => setTimeout(resolve, 2000));
-					return;
-				}
-			}
-
-			registerLog(` No specific back button found. Trying window.history.back() as a last resort.`);
-			window.history.back();
-			await new Promise(resolve => setTimeout(resolve, 2000));
-
-		} catch (error: any) {
-			registerLog(` Error going back: ${error.message}`);
-			printLogs();
 		}
 	}
 
@@ -457,52 +507,73 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			registerLog('[CaixaNavigatorSecondStep] Not on caixa.gov.br, skipping automation');
 			return;
 		}
-		
-		// Check if automation has already run to prevent multiple executions
+
 		if ((window as any).__CAIXA_SECOND_STEP_EXECUTED) {
 			registerLog('[CaixaNavigatorSecondStep] Automation already executed, skipping');
 			return;
 		}
 
+
+		const errorCheckInterval = setInterval(() => {
+			checkForErrorDialog();
+		}, 1000);
+
 		registerLog('[CaixaNavigatorSecondStep] Second step component loaded for financing options processing');
 		printLogs();
-		
+
 		const runSecondStepAutomation = async () => {
-			// Mark as executed to prevent re-runs
 			(window as any).__CAIXA_SECOND_STEP_EXECUTED = true;
 
 			registerLog('About to call processFinancingOptions()...');
 			printLogs();
-			
-			try {
-				const optionsResult = await processFinancingOptions();
-				registerLog('processFinancingOptions() completed');
-				
-				if (optionsResult) {
-					registerLog(`Successfully processed ${optionsResult.result?.length || 0} financing options`);
-					registerLog(`Financing Options Result: ${JSON.stringify(optionsResult, null, 2)}`);
-				} else {
-					registerLog('No financing options found or processing failed');
+
+			let finalResult: any = null;
+			for (let attempt = 1; attempt <= 2; attempt++) {
+				registerLog(` processFinancingOptions attempt ${attempt}/2`);
+				try {
+					const optionsResult = await processFinancingOptions();
+					registerLog(` processFinancingOptions completed (attempt ${attempt})`);
+					if (optionsResult) {
+						finalResult = optionsResult;
+						break;
+					} else {
+						registerLog(` processFinancingOptions returned no results on attempt ${attempt}`);
+					}
+				} catch (error: any) {
+					registerLog(` ERROR in processFinancingOptions() attempt ${attempt}: ${error?.message || error}`);
+					printLogs();
 				}
 
-				// Mark automation as complete to show success animation
-				setIsComplete(true);
-			} catch (error: any) {
-				console.error('ERROR in processFinancingOptions():', error);
-				registerLog(` ERROR in processFinancingOptions(): ${error.message}`);
-				printLogs();
+				if (attempt < 2) {
+					registerLog(' Waiting before retry...');
+					await new Promise(resolve => setTimeout(resolve, 1500));
+				}
 			}
-			
+
+			if (finalResult) {
+				registerLog(`Successfully processed ${finalResult.result?.length || 0} financing options`);
+				registerLog(`Financing Options Result: ${JSON.stringify(finalResult, null, 2)}`);
+			} else {
+				registerLog('All attempts failed to process financing options');
+			}
+
+			setIsComplete(true);
+
 			registerLog(' Second step automation sequence completed.');
 			printLogs();
-        }
+		}
 
-        // Add a small delay to ensure page is fully loaded
-        setTimeout(() => {
-        	runSecondStepAutomation();
-        }, 1000);
+		// Add a small delay to ensure page is fully loaded
+		setTimeout(() => {
+			runSecondStepAutomation();
+		}, 1000);
 
-	}, [isCaixaPage]); // Removed JSON.stringify(data) to prevent re-runs on data changes
+		// Cleanup interval on unmount
+		return () => {
+			clearInterval(errorCheckInterval);
+		};
+
+	}, [isCaixaPage]);
 
 	return (
 		<SimulationOverlay
@@ -512,7 +583,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			bankIcon="ibb-caixa"
 			isComplete={isComplete}
 		>
-			<div className="caixa-navigator-second-step">
+			<div className="caixa-navigator">
 				<h2>Caixa Second Step Automation Running...</h2>
 				<p>Processing financing options...</p>
 			</div>
@@ -520,28 +591,12 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 	);
 };
 
-// registerLog('[caixaNavigationSecondStep.js] Script loaded. Starting auto-mount...');
 
-// Auto-montar o componente CaixaNavigatorSecondStep usando AutoMountComponent
-const AutoMountCaixaNavigatorSecondStep = () => (
-	<AutoMountComponent
-		Component={CaixaNavigatorSecondStep}
-		containerId="caixa-navigator-second-step-root"
-		containerStyles={{}}
-		logPrefix="caixaNavigationSecondStep.js"
-		registerLog={registerLog}
-		printLogs={printLogs}
-	/>
-);
+registerLog('[caixaNavigationSecondStep.js] Script loaded. Starting auto-mount...');
 
-// Inicializar o componente de auto-montagem
-const initializeAutoMount = () => {
-	const mountPoint = document.createElement('div');
-	mountPoint.id = 'auto-mount-second-step-point';
-	document.body.appendChild(mountPoint);
-	
-	const root = createRoot(mountPoint);
-	root.render(React.createElement(AutoMountCaixaNavigatorSecondStep));
-};
-
-initializeAutoMount();
+autoMountNavigator(CaixaNavigatorSecondStep, {
+	containerId: 'caixa-navigator-second-step-root',
+	logPrefix: 'caixaNavigationSecondStep.js',
+	registerLog,
+	printLogs,
+});

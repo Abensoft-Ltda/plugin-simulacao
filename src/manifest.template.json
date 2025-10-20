@@ -13,6 +13,8 @@
   ],
   "host_permissions": [
     "https://*.caixa.gov.br/*",
+    "https://*.bb.com.br/*",
+    "https://cim-simulador-imovelproprio.apps.bb.com.br/*",
     "https://*.superleme.com.br/*",
     "https://superleme.abensoft:8443/*"
   ],
@@ -31,10 +33,13 @@
         "Validation.*.js",
         "logger.*.js",
         "caixaNavigation.js",
-        "caixaNavigationSecondStep.js"
+        "caixaNavigationSecondStep.js",
+        "bbNavigation.js"
       ],
       "matches": [
         "https://*.caixa.gov.br/*",
+        "https://*.bb.com.br/*",
+        "https://cim-simulador-imovelproprio.apps.bb.com.br/*",
         "https://*.superleme.com.br/*",
         "https://superleme.abensoft:8443/*"
       ]

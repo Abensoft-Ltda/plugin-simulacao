@@ -26,14 +26,28 @@ export const AutoMountComponent: React.FC<AutoMountComponentProps> = ({
           registerLog(`[${logPrefix}] Auto-montando com dados pré-carregados.`);
           printLogs();
           
+          if (document.getElementById(`${containerId}-host`)) {
+            document.getElementById(`${containerId}-host`)?.remove();
+          }
+
+          const host = document.createElement('div');
+          host.id = `${containerId}-host`;
+          document.body.appendChild(host);
+
+          const shadowRoot = host.attachShadow({ mode: 'open' });
+          const styleLink = document.createElement('link');
+          styleLink.rel = 'stylesheet';
+          const appCssHref = typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('App.css') : 'App.css';
+          styleLink.href = appCssHref;
+          shadowRoot.appendChild(styleLink);
+
           const container = document.createElement('div');
           container.id = containerId;
-          
-          // Aplicar apenas estilos personalizados se fornecidos, sem padrões
+
           Object.assign(container.style, containerStyles);
 
-          document.body.appendChild(container);
-          
+          shadowRoot.appendChild(container);
+
           const root = createRoot(container);
           root.render(React.createElement(Component, { data }));
 

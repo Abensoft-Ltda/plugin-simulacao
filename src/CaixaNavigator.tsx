@@ -12,7 +12,8 @@ declare global {
 let logs: string[] = [];
 
 function registerLog(message: string) {
-	logs.push(message);
+	const timestampedMessage = `${message} -- [${new Date().toLocaleTimeString()}]`;
+	logs.push(timestampedMessage);
 }
 
 function printLogs() {
@@ -46,6 +47,37 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			}
 			check();
 		});
+	}
+
+	// Check for error dialog and refresh if found
+	function checkForErrorDialog(): boolean {
+		// Check for the specific error dialog
+		const errorDialog = document.querySelector('#ui-id-34.ui-dialog-content.ui-widget-content');
+		
+		if (errorDialog) {
+			const errorText = errorDialog.textContent?.trim();
+			registerLog(`Found error dialog #ui-id-34 with text: "${errorText}"`);
+			
+			// Check if it contains the specific error message
+			if (errorText?.includes('Campo obrigatório não informado')) {
+				registerLog('Error dialog contains "Campo obrigatório não informado" - refreshing page');
+				window.location.reload();
+				return true;
+			}
+		}
+		
+		// Also check for any dialog with the specific text (in case ID changes)
+		const allDialogs = document.querySelectorAll('.ui-dialog-content, [class*="ui-dialog"]');
+		for (const dialog of allDialogs) {
+			const dialogText = dialog.textContent?.trim();
+			if (dialogText?.includes('Campo obrigatório não informado')) {
+				registerLog(`Found error dialog with class "${dialog.className}" containing error text - refreshing page`);
+				window.location.reload();
+				return true;
+			}
+		}
+		
+		return false;
 	}
 
 	function waitForElementEnabled(selector: string, timeout = 10000): Promise<Element | null> {
@@ -310,14 +342,32 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			registerLog(' Not on caixa.gov.br, skipping automation');
 			return;
 		}
+		
+		// Start periodic error dialog monitoring
+		const errorCheckInterval = setInterval(() => {
+			checkForErrorDialog();
+		}, 1000); // Check every second
+		
 		registerLog(' useEffect triggered for automation.');
 		
 		const runAutomation = async () => {
 			registerLog(' Starting automation sequence.');
 			
+			// Initial error check
+			if (checkForErrorDialog()) {
+				registerLog(' Error dialog detected during initial check - page will refresh');
+				return;
+			}
+			
 			// --- Aguardar página estar pronta ---
 			registerLog(' Waiting 2 seconds for page to fully load...');
 			await new Promise(resolve => setTimeout(resolve, 2000));
+			
+			// Check for error dialog after page load
+			if (checkForErrorDialog()) {
+				registerLog(' Error dialog detected after page load - page will refresh');
+				return;
+			}
 			
 			// --- Etapa 1: Preencher a primeira página ---
 			registerLog(' Waiting for the first form to be ready...');
@@ -330,6 +380,12 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			printLogs();
 			await fillFirstPage(fields);
 			
+			// Check for error dialog after filling first page
+			if (checkForErrorDialog()) {
+				registerLog(' Error dialog detected after filling first page - page will refresh');
+				return;
+			}
+			
 			const nextButton1 = await waitForElement('#btn_next1'); 
 			if (!nextButton1) {
 				registerLog(' Automation failed: "Next" button not found on first page.');
@@ -338,6 +394,12 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			registerLog(' Clicking "Próxima etapa".');
 			(nextButton1 as HTMLElement).click();
 			await new Promise(resolve => setTimeout(resolve, 2000)); // Espera maior após o clique
+
+			// Check for error dialog after clicking next button
+			if (checkForErrorDialog()) {
+				registerLog(' Error dialog detected after clicking next button - page will refresh');
+				return;
+			}
 
 			// --- Etapa 3: Preencher a segunda página ---
 			registerLog(' Waiting for the second form to be ready...');
@@ -349,6 +411,12 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			registerLog(' Second page ready. Filling fields.');
 			printLogs();
 			await fillSecondPage(fields);
+			
+			// Check for error dialog after filling second page
+			if (checkForErrorDialog()) {
+				registerLog(' Error dialog detected after filling second page - page will refresh');
+				return;
+			}
 			
 			const nextButton2 = await waitForElement('#btn_next2'); // ID atualizado do HTML
 			if (!nextButton2) {
@@ -366,6 +434,11 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({ data }
 			registerLog(` A critical error stopped the automation: ${err}`);
 			printLogs();
 		});
+		
+		// Cleanup interval on unmount
+		return () => {
+			clearInterval(errorCheckInterval);
+		};
 		
 	}, [isCaixaPage, JSON.stringify(fields)]);
 	
@@ -486,9 +559,22 @@ registerLog('[caixaNavigation.js] Script loaded. Starting auto-mount...');
 				registerLog('[caixaNavigation.js] Auto-mounting with pre-seeded data.');
 				printLogs();
 				
+			document.getElementById('caixa-navigator-host')?.remove();
+
+			const host = document.createElement('div');
+			host.id = 'caixa-navigator-host';
+			document.body.appendChild(host);
+			// Necessário para impedir que o CSS da página substitua o CSS da simulação
+			const shadowRoot = host.attachShadow({ mode: 'open' });
+			const styleLink = document.createElement('link');
+			styleLink.rel = 'stylesheet';
+			const appCssHref = typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('App.css') : 'App.css';
+			styleLink.href = appCssHref;
+			shadowRoot.appendChild(styleLink);
+
 				const container = document.createElement('div');
 				container.id = 'caixa-navigator-root';
-				document.body.appendChild(container);
+				shadowRoot.appendChild(container);
 				
 				const root = createRoot(container);
 				root.render(React.createElement(CaixaNavigator, { data }));

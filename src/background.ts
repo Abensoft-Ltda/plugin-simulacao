@@ -1,5 +1,5 @@
 import { writeLog } from './lib/logger';
-import { CaixaFields } from './methods/Validation';
+import { CaixaFields, BBFields } from './methods/Validation';
 import { getConfig } from './config';
 
 let activeAutomations = new Map<number, any>();
@@ -85,17 +85,77 @@ async function cleanAuthStorage(): Promise<void> {
     });
 }
 
+function normalizeLabel(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, ' ')
+        .replace(/\.+$/, '');
+}
+
+const BANK_CODE_MAP: Record<string, string> = {
+    '104': 'Caixa Econômica Federal',
+    '1': 'Banco do Brasil S.A'
+};
+
+function resolveBankLabelFromCode(codeValue: any): string | null {
+    if (codeValue === undefined || codeValue === null) {
+        return null;
+    }
+
+    const primaryCode = String(codeValue).split(',')[0].trim();
+    if (!primaryCode) {
+        return null;
+    }
+
+    return BANK_CODE_MAP[primaryCode] ?? null;
+}
+
+function resolveBankLabel(targetData: Record<string, any>): { raw: string; normalized: string } | null {
+    const directKeys = ['target', 'simulacao-target'];
+
+    for (const key of directKeys) {
+        const value = targetData?.[key];
+        if (typeof value === 'string' && value.trim().length > 0) {
+            const trimmed = value.trim();
+            return {
+                raw: trimmed,
+                normalized: normalizeLabel(trimmed)
+            };
+        }
+    }
+
+    const codeKeys = ['leal_if_id', 'simulacao-leal_if_id'];
+    for (const key of codeKeys) {
+        const labelFromCode = resolveBankLabelFromCode(targetData?.[key]);
+        if (labelFromCode) {
+            return {
+                raw: labelFromCode,
+                normalized: normalizeLabel(labelFromCode)
+            };
+        }
+    }
+
+    return null;
+}
+
 // Bank routing function to handle different bank simulations
 async function startBankSimulation(fields: Record<string, any>, targetName: string): Promise<any> {
-    const target = targetName.toLowerCase();
+    const target = normalizeLabel(targetName);
     writeLog(`[background] Starting simulation for bank: ${target}`);
 
     let targetUrl: string;
 
-    // Determine the correct URL based on the target bank
     switch (target) {
-        case 'caixa':
+        case 'caixa economica federal':
             targetUrl = 'https://habitacao.caixa.gov.br/siopiweb-web/simulaOperacaoInternet.do?method=inicializarCasoUso';
+            break;
+        case 'banco do brasil s.a':
+        case 'banco do brasil':
+        case 'bb':
+            targetUrl = 'https://cim-simulador-imovelproprio.apps.bb.com.br/simulacao-egi';
             break;
         case 'santander':
             targetUrl = 'https://www.santander.com.br/';
@@ -111,6 +171,7 @@ async function startBankSimulation(fields: Record<string, any>, targetName: stri
     }
 
     writeLog(`[background] Creating tab for ${target} at ${targetUrl}`);
+
 
     // Create a new tab for the target bank simulation
     return new Promise((resolve, reject) => {
@@ -137,7 +198,6 @@ async function startBankSimulation(fields: Record<string, any>, targetName: stri
     });
 }
 
-
 chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
     if (changeInfo.status === 'complete' && tab.url && tab.url.includes('superleme')) {
         writeLog(`[background] Superleme page detected: ${tab.url}`);
@@ -148,16 +208,23 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
             func: () => {
                 let contextValid = true;
                 window.addEventListener('unload', () => { contextValid = false; });
-                console.log('[SUPERLEME BRIDGE] Content script injected and loaded');
                 window.postMessage({ type: 'SUPERLEME_BRIDGE_LOADED' }, '*');
+
                 const handler = (event: MessageEvent) => {
                     if (!contextValid) return;
                     if (event.source !== window) return;
                     if (event.data.type === 'SUPERLEME_TO_BACKGROUND') {
-                        if (event.data.payload?.action === 'startSimulationRequest') {
-                            console.log('[SUPERLEME BRIDGE] Received simulation trigger:', event.data.payload);
-                        }
                         window.postMessage({ type: 'SUPERLEME_BRIDGE_RECEIVED', payload: event.data.payload }, '*');
+
+                        // Enviar confirmação imediata para o Superleme
+                        window.postMessage({
+                            type: 'BACKGROUND_TO_SUPERLEME',
+                            payload: {
+                                status: 'received',
+                                message: 'Conexão recebida do Superleme. Extensão confirmada.',
+                                action: event.data.payload?.action
+                            }
+                        }, '*');
 
                         // Send to background and handle response
                         try {
@@ -171,9 +238,14 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
                                             error: chrome.runtime.lastError.message
                                         }, '*');
                                     } else {
+                                        // Enviar resposta processada para o Superleme
                                         window.postMessage({
-                                            type: 'SUPERLEME_BRIDGE_RESPONSE',
-                                            response: response
+                                            type: 'BACKGROUND_TO_SUPERLEME',
+                                            payload: {
+                                                status: 'success',
+                                                message: 'Processamento concluído com sucesso.',
+                                                response: response
+                                            }
                                         }, '*');
                                     }
                                 });
@@ -191,6 +263,7 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
                         }
                     }
                 };
+
                 window.addEventListener('message', handler);
                 window.addEventListener('unload', () => {
                     window.removeEventListener('message', handler);
@@ -273,16 +346,24 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
     writeLog(`[background] Tab ${tabId} status: ${changeInfo.status}, URL: ${tab.url}`);
     
     if (changeInfo.status === 'complete' && tab.url) {
-        const target = automationData.target || 'caixa';
-        writeLog(`[background] Checking if tab ${tabId} is a ${target} page`);
+        const target = automationData.target || 'caixa economica federal';
+        const normalizedTarget = normalizeLabel(target);
+        writeLog(`[background] Checking if tab ${tabId} is a ${normalizedTarget} page`);
 
         let isBankPage = false;
 
         // Check if we're on the correct bank's page based on the target
-        switch (target.toLowerCase()) {
+        switch (normalizedTarget) {
             case 'caixa':
+            case 'caixa economica federal':
                 isBankPage = tab.url.includes('caixa.gov.br');
                 writeLog(`[background] Caixa page check: ${tab.url} includes 'caixa.gov.br'? ${isBankPage}`);
+                break;
+            case 'banco do brasil s.a':
+            case 'banco do brasil':
+            case 'bb':
+                isBankPage = tab.url.includes('bb.com.br');
+                writeLog(`[background] BB page check: ${tab.url} includes 'bb.com.br'? ${isBankPage}`);
                 break;
             case 'santander':
                 isBankPage = tab.url.includes('santander.com.br');
@@ -383,19 +464,48 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
         (async () => {
             const results: Array<{ target: string; result?: any; errors?: string[] }> = [];
-            for (let idx = 0; idx < targets.length; idx++) {
-                const target = targets[idx];
-                writeLog(`[background] Processing simulation target[${idx}]...`);
-                const { fields, errors } = CaixaFields.buildCaixaFields(target);
-                const targetName = fields.target || "caixa";
+            
+            // Create all simulation promises in parallel
+            const simulationPromises = targets.map(async (target, idx) => {
+                writeLog(`[background] Starting parallel simulation for target[${idx}]...`);
+                const resolvedBank = resolveBankLabel(target);
+
+                if (!resolvedBank) {
+                    const message = `[background] Unknown bank target for target[${idx}]. Skipping simulation.`;
+                    writeLog(message);
+                    return { target: `unknown_${idx}`, errors: [message] };
+                }
+
+                const { raw: bankLabelRaw, normalized: bankLabelNormalized } = resolvedBank;
+                writeLog(`[background] Detected bank target for target[${idx}]: ${bankLabelRaw}`);
+                const isBancoDoBrasil = bankLabelNormalized === 'banco do brasil s.a';
+                
+                let fields: Record<string, any> = {};
+                let errors: string[] = [];
+
+                if (isBancoDoBrasil) {
+                    const bbResult = BBFields.buildBBFields(target);
+                    fields = bbResult.fields;
+                    errors = bbResult.errors;
+                } else {
+                    // Default to Caixa for backward compatibility and banks sharing similar flow
+                    const caixaResult = CaixaFields.buildCaixaFields(target);
+                    fields = caixaResult.fields;
+                    errors = caixaResult.errors;
+                }
+
+                const targetName = bankLabelNormalized || 'caixa economica federal';
+
+                if (errors.length === 0) {
+                    fields.target = targetName;
+                }
 
                 if (errors.length > 0) {
                     writeLog(`[background] Validation errors for ${targetName}: ${errors.join(', ')}`);
-                    results.push({ target: targetName, errors });
-                    continue;
+                    return { target: targetName, errors };
                 }
 
-                writeLog(`[background] Validation passed for ${targetName}. Calling startSimulation...`);
+                writeLog(`[background] Validation passed for ${targetName}. Starting simulation...`);
 
                 try {
                     const timeoutPromise = new Promise((_, reject) =>
@@ -408,18 +518,72 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                     ]);
 
                     writeLog(`[background] Simulation for ${targetName} COMPLETED.`);
-                    results.push({ target: targetName, result });
+                    return { target: targetName, result };
 
                 } catch (error) {
                     const errorMessage = error instanceof Error ? error.message : 'Unknown simulation error';
                     writeLog(`[background] ERROR during simulation for ${targetName}: ${errorMessage}`);
-                    results.push({ target: targetName, errors: [errorMessage] });
+                    return { target: targetName, errors: [errorMessage] };
                 }
-            }
+            });
 
-            writeLog('[background] Finished processing all targets.');
+            // Wait for all simulations to complete (or fail)
+            writeLog(`[background] Waiting for ${simulationPromises.length} simulations to complete...`);
+            const settledResults = await Promise.allSettled(simulationPromises);
 
-            sendResponse({ status: "success", count: targets.length, results });
+            // Process results from all simulations
+            settledResults.forEach((settledResult, idx) => {
+                if (settledResult.status === 'fulfilled') {
+                    const value = settledResult.value ?? {};
+                    results.push(value);
+
+                    if (Array.isArray(value.errors) && value.errors.length > 0) {
+                        writeLog(`[background] Simulation ${idx} completed with errors: ${value.errors.join('; ')}`);
+                    } else if (value.result === undefined || value.result === null) {
+                        writeLog(`[background] Simulation ${idx} finished without result payload.`);
+                    } else {
+                        writeLog(`[background] Simulation ${idx} completed successfully`);
+                    }
+                } else {
+                    const resolved = targets[idx] ? resolveBankLabel(targets[idx]) : null;
+                    const targetName = resolved ? resolved.normalized : `target_${idx}`;
+                    const errorMessage = settledResult.reason instanceof Error ? settledResult.reason.message : String(settledResult.reason);
+                    results.push({ 
+                        target: targetName, 
+                        errors: [`Promise rejection: ${errorMessage}`] 
+                    });
+                    writeLog(`[background] Simulation ${idx} promise rejected: ${errorMessage}`);
+                }
+            });
+
+            const successfulResults = results.filter(item => !(Array.isArray(item?.errors) && item.errors.length > 0) && item?.result !== undefined && item?.result !== null);
+            const failedResults = results.filter(item => Array.isArray(item?.errors) && item.errors.length > 0 || item?.result === undefined || item?.result === null);
+
+            const responseStatus = failedResults.length === 0
+                ? "success"
+                : (successfulResults.length > 0 ? "partial" : "error");
+
+            writeLog(`[background] All ${targets.length} simulations processed. Success: ${successfulResults.length}, Failed: ${failedResults.length}.`);
+
+            const summaryPayload = {
+                completedAt: Date.now(),
+                totals: {
+                    requested: targets.length,
+                    success: successfulResults.length,
+                    failed: failedResults.length
+                },
+                results
+            };
+
+            chrome.storage.local.set({ simulationSummary: summaryPayload }, () => {
+                if (chrome.runtime.lastError) {
+                    writeLog(`[background] Failed to persist simulation summary: ${chrome.runtime.lastError.message}`);
+                } else {
+                    writeLog('[background] Simulation summary stored in chrome.storage.local.');
+                }
+            });
+
+            sendResponse({ status: responseStatus, count: targets.length, results });
         })();
 
         return true;
@@ -450,20 +614,22 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
         writeLog(`[background] Processing result: sim_id=${simId}, if_id=${ifId}`);
 
-        // Send to server (which will also handle storage)
         (async () => {
+            let responseStatus = "success";
+            
             if (simId !== 'unknown') {
                 try {
                     await sendResultsToServer(simId, ifId, resultPayload);
                     writeLog(`[background] Result sent to server and stored successfully`);
                 } catch (error) {
                     writeLog(`[background] Send failed: ${error instanceof Error ? error.message : String(error)}`);
+                    responseStatus = "failure";
                 }
             } else {
                 writeLog(`[background] Invalid sim_id, skipping server send`);
+                responseStatus = "failure";
             }
 
-            // Resolve and cleanup
             if (automationData && automationData.resolve) {
                 automationData.resolve(resultPayload);
                 if (senderId) {
@@ -471,7 +637,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 }
             }
 
-            sendResponse({ status: "result received and processed" });
+            sendResponse({ status: responseStatus });
         })();
 
         return true;
@@ -482,9 +648,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
 async function injectScripts(tabId: number, data: any, url: string, target: string) {
     try {
+
+        target = normalizeLabel(target);
         writeLog(`[background] Injecting data into tab ${tabId} for ${target}.`);
 
-        // First inject the CSS file
         writeLog(`[background] Injecting App.css into tab ${tabId}.`);
         try {
             await chrome.scripting.insertCSS({
@@ -496,7 +663,7 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
             writeLog(`[background] Failed to inject CSS: ${cssError.message}`);
         }
 
-        // Then inject the data
+        writeLog(`[background] Injecting automation payload into tab ${tabId}.`);
         await chrome.scripting.executeScript({
             target: { tabId: tabId },
             world: 'MAIN',
@@ -505,8 +672,8 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
             },
             args: [data]
         });
+        writeLog(`[background] Automation payload injected into tab ${tabId}.`);
 
-        // Inject bridge content script (like in the working version)
         writeLog(`[background] Injecting bridge content script into tab ${tabId}.`);
         await chrome.scripting.executeScript({
             target: { tabId: tabId },
@@ -544,10 +711,9 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
             }
         });
 
-        // Determine which script to inject based on target and URL
         let scriptToInject: string;
 
-        if (target.toLowerCase() === 'caixa') {
+        if (target == 'caixa' || target == 'caixa economica federal') {
             const secondStepUrl = 'https://habitacao.caixa.gov.br/siopiweb-web/simulaOperacaoInternet.do?method=enquadrarProdutos';
             if (url.startsWith(secondStepUrl)) {
                 scriptToInject = 'caixaNavigationSecondStep.js';
@@ -556,10 +722,11 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
                 scriptToInject = 'caixaNavigation.js';
                 writeLog(`[background] CAIXA FIRST STEP - Injecting ${scriptToInject}`);
             }
+        } else if (target === 'banco do brasil s.a' || target === 'banco do brasil' || target === 'bb') {
+            scriptToInject = 'bbNavigation.js';
+            writeLog(`[background] BANCO DO BRASIL - Injecting ${scriptToInject}`);
         } else {
-            // For other banks, we'll need to create their specific navigation scripts
-            // For now, use a placeholder or the base caixa script as fallback
-            scriptToInject = 'caixaNavigation.js'; // TODO: Create bank-specific scripts
+            scriptToInject = 'caixaNavigation.js'; 
             writeLog(`[background] ${target.toUpperCase()} - Injecting ${scriptToInject} (using fallback)`);
         }
 
@@ -575,7 +742,7 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
             func: (scriptUrl, scriptName) => {
                 const script = document.createElement('script');
                 script.type = 'module';
-                script.src = scriptUrl;  // Use the pre-resolved URL
+                script.src = scriptUrl;  
                 script.onload = () => {
                     console.log(`[background-loader] ${scriptName} loaded successfully`);
                 };
@@ -611,109 +778,66 @@ async function sendResultsToServer(simId: string, ifId: string, scrapedResults: 
             return isNaN(parsed) ? null : parsed;
         };
 
-        // Helper function to clean prazo (period) - extract numbers only
-        const cleanPrazo = (value: any): number | null => {
-            if (typeof value === 'number') return value;
-            if (typeof value !== 'string') return null;
-
-            // Extract numbers only (e.g., "271 meses" -> 271)
-            const numbers = value.replace(/\D/g, '');
-            const parsed = parseInt(numbers, 10);
-            return isNaN(parsed) ? null : parsed;
+        const toResultArray = (source: any): any[] => {
+            if (Array.isArray(source)) return [...source];
+            if (source && typeof source === 'object' && Array.isArray(source.result)) {
+                return [...source.result];
+            }
+            return [];
         };
 
-        // Helper function to sanitize string values
-        const sanitizeStringValue = (value: any): any => {
-            // Convert "undefined" string or empty strings to null
-            if (value === 'undefined' || value === '' || value === null || value === undefined) {
-                return null;
-            }
-            return value;
+        const ensureString = (value: any, fallback: string): string => {
+            if (typeof value !== 'string') return fallback;
+            const trimmed = value.trim();
+            return trimmed.length === 0 ? fallback : trimmed;
         };
 
-        // Helper function to process each simulation option/result
-        const cleanSimulationOption = (option: any): any => {
-            if (!option || typeof option !== 'object') return null;
+        const targetIf = ensureString(scrapedResults?.if ?? scrapedResults?.target ?? ifId, 'unknown');
+        const statusValue = ensureString(scrapedResults?.status ?? scrapedResults?.data?.status, 'success').toLowerCase() === 'failure' ? 'failure' : 'success';
 
-            const prazo = option.prazo ? cleanPrazo(option.prazo) : null;
-            const valorEntrada = option.valor_entrada ? cleanMonetaryValue(option.valor_entrada) : null;
-            const valorTotal = option.valor_total ? cleanMonetaryValue(option.valor_total) : null;
+        const combinedResults: any[] = [];
 
-            // Skip incomplete records
-            if (prazo === null || valorEntrada === null) {
-                writeLog(`[background] Skipping incomplete simulation option: ${JSON.stringify(option)}`);
-                return null;
+        const primaryResults = toResultArray(scrapedResults?.result ?? scrapedResults?.data);
+        combinedResults.push(...primaryResults);
+
+        if (statusValue === 'failure') {
+            const failureMessage = scrapedResults?.message ?? scrapedResults?.data?.message;
+            if (failureMessage) {
+                combinedResults.push(ensureString(failureMessage, 'error'));
             }
-
-            // Sanitize string fields - convert "undefined" or empty strings to null
-            const jurosNominais = sanitizeStringValue(option.juros_nominais || option.juros_nominal);
-            const jurosEfetivos = sanitizeStringValue(option.juros_efetivos || option.juros_efetivo);
-            const tipoAmortizacao = sanitizeStringValue(option.tipo_amortizacao || option.amortization_type);
-
-            return {
-                prazo: prazo,
-                valor_entrada: valorEntrada,
-                valor_total: valorTotal,
-                juros_nominais: jurosNominais,
-                juros_efetivos: jurosEfetivos,
-                tipo_amortizacao: tipoAmortizacao
-            };
-        };
-
-        let processedData: any;
-
-        if (scrapedResults.if && scrapedResults.result) {
-            const cleanedResults: any[] = [];
-
-            if (Array.isArray(scrapedResults.result)) {
-                for (const option of scrapedResults.result) {
-                    const cleaned = cleanSimulationOption(option);
-                    if (cleaned) {
-                        cleanedResults.push(cleaned);
-                    }
-                }
-            }
-
-            processedData = {
-                target: scrapedResults.if,
-                status: 'success',
-                data: {
-                    result: cleanedResults,
-                    message: scrapedResults.message || ''
-                }
-            };
-        } else if (scrapedResults.target && scrapedResults.data) {
-            // Already in correct structure: { target: "caixa", status: "success", data: { result: [...] } }
-            processedData = { ...scrapedResults };
-
-            // Still clean the results
-            if (scrapedResults.data?.result && Array.isArray(scrapedResults.data.result)) {
-                const cleanedResults: any[] = [];
-                for (const option of scrapedResults.data.result) {
-                    const cleaned = cleanSimulationOption(option);
-                    if (cleaned) {
-                        cleanedResults.push(cleaned);
-                    }
-                }
-                processedData.data.result = cleanedResults;
-            }
-        } else {
-            // Unknown structure, wrap it
-            writeLog(`[background] Unknown result structure, wrapping as-is`);
-            processedData = {
-                target: ifId,
-                status: 'success',
-                data: {
-                    result: [],
-                    message: 'Unknown data structure'
-                }
-            };
         }
+
+        const normalizedResults = combinedResults.map((entry) => {
+            if (typeof entry === 'string') {
+                const trimmed = entry.trim();
+                const prefix = `${targetIf}:`;
+                if (trimmed.toLowerCase().startsWith(prefix.toLowerCase())) {
+                    return trimmed;
+                }
+                return `${prefix} ${trimmed}`;
+            }
+
+            if (entry && typeof entry === 'object') {
+                return {
+                    if: entry.if ?? targetIf,
+                    ...entry
+                };
+            }
+
+            return entry;
+        });
+
+        const processedData = {
+            target: targetIf,
+            status: statusValue,
+            data: {
+                result: normalizedResults
+            }
+        };
 
         writeLog(`[background] Original results: ${JSON.stringify(scrapedResults, null, 2)}`);
         writeLog(`[background] Processed results: ${JSON.stringify(processedData, null, 2)}`);
 
-        // Format and store the simulation result
         const simulationResult = {
             sim_id: simId,
             if_id: ifId,
@@ -735,17 +859,6 @@ async function sendResultsToServer(simId: string, ifId: string, scrapedResults: 
             });
         });
 
-        // Validate authentication before sending
-        writeLog(`[background] Validating authentication before sending results...`);
-        const isAuthenticated = await checkAuth();
-
-        if (!isAuthenticated) {
-            writeLog(`[background] Authentication failed - cannot send results to server`);
-            console.warn('[background] Authentication required. Results stored in chrome.storage for manual testing.');
-            return;
-        }
-
-        // Get the config to determine the correct URL
         const config = await getConfig();
         const baseUrl = config.urlSuperleme;
         const apiUrl = `${baseUrl}api/model/sl_cad_interacao_simulacao/post/insert_simulacao`;
@@ -869,8 +982,7 @@ async function sendResultsToServer(simId: string, ifId: string, scrapedResults: 
             const errorText = await response.text();
             console.error('[background] Server returned error. Status:', response.status, 'Error:', errorText);
             writeLog(`[background] Server error. Status: ${response.status}, Error: ${errorText}`);
-            // Don't throw, just log and return
-            return null;
+            throw new Error(`Server error ${response.status}: ${errorText}`);
         }
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -888,6 +1000,6 @@ async function sendResultsToServer(simId: string, ifId: string, scrapedResults: 
             writeLog(`[background] This appears to be a network/CORS error. The server may not be accessible or CORS headers may be missing.`);
         }
 
-        return null;
+        throw error;
     }
 }
