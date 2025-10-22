@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, forwardRef } from "react";
 
 interface SimulationOverlayProps {
   title?: string;
@@ -8,6 +8,54 @@ interface SimulationOverlayProps {
   isComplete?: boolean;
   children: React.ReactNode;
 }
+
+type PrimaryButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  importantPadding?: string;
+  importantRadius?: string;
+};
+
+const PrimaryButton = forwardRef<HTMLButtonElement, PrimaryButtonProps>(
+  (
+    { importantPadding = "12px 32px", importantRadius = "12px", style, children, ...rest },
+    ref
+  ) => {
+    const innerRef = useRef<HTMLButtonElement | null>(null);
+
+    useEffect(() => {
+      const btn = (ref && typeof ref !== "function" ? (ref as React.MutableRefObject<HTMLButtonElement | null>).current : innerRef.current) || innerRef.current;
+      if (!btn) return;
+
+      btn.style.setProperty("padding", importantPadding, "important");
+      btn.style.setProperty("border-radius", importantRadius, "important");
+
+      return () => {
+        try {
+          btn.style.removeProperty("padding");
+          btn.style.removeProperty("border-radius");
+        } catch (e) {
+          /* ignore */
+        }
+      };
+      // importantPadding/importantRadius intentionally excluded from deps to run only on mount
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    return (
+      <button
+        ref={(node) => {
+          innerRef.current = node;
+          if (!ref) return;
+          if (typeof ref === "function") ref(node);
+          else (ref as React.MutableRefObject<HTMLButtonElement | null>).current = node;
+        }}
+        style={style}
+        {...rest}
+      >
+        {children}
+      </button>
+    );
+  }
+);
 
 export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
   title = "Automação em Andamento",
@@ -39,6 +87,8 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
       document.head.appendChild(link);
     }
   }, []);
+
+  
 
   if (isWatching) {
     // Mostrar o componente sem o overlay - usando tema cinza apropriado
@@ -82,13 +132,13 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
             className="text-lg font-medium"
             style={{ color: "white" }}
           >{`Simulação concluída - ${bankName}`}</p>
-          <button
+          <PrimaryButton
             onClick={() => setIsWatching(true)}
             className="pl-8 pr-8 pt-3 pb-3 bg-main-green hover:bg-green-600 border-none rounded-lg text-base font-bold cursor-pointer shadow-lg transition-all duration-300 ease-in-out hover:scale-105"
             style={{ color: "#1f2937" }}
           >
             Visualizar página
-          </button>
+          </PrimaryButton>
         </div>
       </div>
     );
@@ -132,13 +182,13 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
       </p>
 
       {/* Botão Exibir Processo - TEXTO CINZA ESCURO */}
-      <button
+      <PrimaryButton
         onClick={() => setIsWatching(true)}
-        className="pl-8 pr-8 pt-3 pb-3 bg-main-green hover:bg-green-600 border-none rounded-lg text-base font-bold cursor-pointer shadow-lg transition-all duration-300 ease-in-out hover:scale-105"
+        className="bg-main-green hover:bg-green-600 border-none text-base font-bold cursor-pointer shadow-lg transition-all duration-300 ease-in-out hover:scale-105"
         style={{ color: "#1f2937" }}
       >
         Exibir processo de simulação
-      </button>
+      </PrimaryButton>
 
       {/* Spinner de Carregamento - BRANCO */}
       <div className="mt-10 flex gap-2">
