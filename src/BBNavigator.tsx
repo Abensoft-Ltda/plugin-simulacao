@@ -1662,15 +1662,15 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
 
   return (
     <SimulationOverlay
-      title="Simulação BB"
+      title="Simulação Banco do Brasil"
       subtitle="Preenchendo formulário automaticamente"
       bankName="Banco do Brasil"
       bankIcon="ibb-banco-brasil"
       isComplete={isComplete}
     >
       <div className="bb-navigator">
-        <h2>BB Automation Running...</h2>
-        <p>Check the logs in the extension popup.</p>
+        <h2>Simulação do Banco do Brasil em andamento...</h2>
+        <p>Verifique os resultados no Superleme ao final da execução.</p>
       </div>
     </SimulationOverlay>
   );

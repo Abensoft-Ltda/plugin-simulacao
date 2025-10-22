@@ -14,6 +14,44 @@ type PrimaryButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   importantRadius?: string;
 };
 
+const OVERLAY_FONT_FAMILY =
+  'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const FONT_STYLE_OVERRIDES = `
+.simulation-overlay-root {
+  font-family: ${OVERLAY_FONT_FAMILY} !important;
+}
+.simulation-overlay-root h1[data-font="title"] {
+  font-size: 2.25rem !important;
+  line-height: 2.5rem !important;
+  font-weight: 700 !important;
+}
+.simulation-overlay-root p[data-font="subtitle"] {
+  font-size: 1.125rem !important;
+  line-height: 1.75rem !important;
+  font-weight: 400 !important;
+}
+.simulation-overlay-root p[data-font="bank-name"] {
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+  font-weight: 400 !important;
+}
+.simulation-overlay-root p[data-font="success-message"] {
+  font-size: 1.125rem !important;
+  line-height: 1.75rem !important;
+  font-weight: 500 !important;
+}
+.simulation-overlay-root .simulation-overlay-primary-btn {
+  font-size: 1rem !important;
+  line-height: 1.5rem !important;
+  font-weight: 700 !important;
+}
+.simulation-overlay-root button[data-font="hide-button"] {
+  font-size: 0.75rem !important;
+  line-height: 1rem !important;
+  font-weight: 700 !important;
+}
+`;
+
 const PrimaryButton = forwardRef<HTMLButtonElement, PrimaryButtonProps>(
   (
     { importantPadding = "12px 32px", importantRadius = "12px", style, children, ...rest },
@@ -27,11 +65,13 @@ const PrimaryButton = forwardRef<HTMLButtonElement, PrimaryButtonProps>(
 
       btn.style.setProperty("padding", importantPadding, "important");
       btn.style.setProperty("border-radius", importantRadius, "important");
+      btn.style.setProperty("font-family", OVERLAY_FONT_FAMILY, "important");
 
       return () => {
         try {
           btn.style.removeProperty("padding");
           btn.style.removeProperty("border-radius");
+          btn.style.removeProperty("font-family");
         } catch (e) {
           /* ignore */
         }
@@ -88,21 +128,37 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
     }
   }, []);
 
+  // Injetar reforço de fontes com !important para evitar sobrescritas externas
+  useEffect(() => {
+    const styleId = "simulation-overlay-font-overrides";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = FONT_STYLE_OVERRIDES;
+      document.head.appendChild(style);
+    }
+  }, []);
+
   
 
   if (isWatching) {
     // Mostrar o componente sem o overlay - usando tema cinza apropriado
     return (
-      <div className="fixed top-4 right-4 z-[999999] max-w-md max-h-[90vh] overflow-auto bg-gray-800 border-2 border-gray-600 rounded-lg p-4 shadow-2xl">
+      <div
+        className="simulation-overlay-root fixed top-4 right-4 z-[999999] max-w-md max-h-[90vh] overflow-auto bg-gray-800 border-2 border-gray-600 rounded-lg p-4 shadow-2xl"
+        style={{ fontFamily: OVERLAY_FONT_FAMILY }}
+      >
         <button
           onClick={() => setIsWatching(false)}
           className="absolute top-2 right-2 pl-3 pr-3 pt-1 pb-1 bg-red-500 hover:bg-red-600 text-white border-none rounded text-xs font-bold z-[1000000] transition-colors"
+          style={{ fontFamily: OVERLAY_FONT_FAMILY }}
+          data-font="hide-button"
         >
           Ocultar
         </button>
         <div className="mt-8" style={{ color: "white !important" }}>
           <style>{`
-						.mt-8 * { color: white !important; }
+						.mt-8 * { color: white !important; font-family: ${OVERLAY_FONT_FAMILY} !important; }
 					`}</style>
           {children}
         </div>
@@ -113,7 +169,10 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
   // Mostrar animação de sucesso quando completo
   if (showSuccess) {
     return (
-      <div className="fixed inset-0 w-screen h-screen bg-gray-700 z-[999999] flex items-center justify-center transition-opacity duration-500 ease-in-out">
+      <div
+        className="simulation-overlay-root fixed inset-0 w-screen h-screen bg-gray-700 z-[999999] flex items-center justify-center transition-opacity duration-500 ease-in-out"
+        style={{ fontFamily: OVERLAY_FONT_FAMILY }}
+      >
         <div className="text-center">
           <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 transform transition-all duration-700 ease-out scale-110 animate-pulse">
             <svg
@@ -131,11 +190,12 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
           <p
             className="text-lg font-medium"
             style={{ color: "white" }}
+            data-font="success-message"
           >{`Simulação concluída - ${bankName}`}</p>
           <PrimaryButton
             onClick={() => setIsWatching(true)}
-            className="pl-8 pr-8 pt-3 pb-3 bg-main-green hover:bg-green-600 border-none rounded-lg text-base font-bold cursor-pointer shadow-lg transition-all duration-300 ease-in-out hover:scale-105"
-            style={{ color: "#1f2937" }}
+            className="simulation-overlay-primary-btn pl-8 pr-8 pt-3 pb-3 bg-main-green hover:bg-green-600 border-none rounded-lg text-base font-bold cursor-pointer shadow-lg transition-all duration-300 ease-in-out hover:scale-105"
+            style={{ color: "#1f2937", fontFamily: OVERLAY_FONT_FAMILY }}
           >
             Visualizar página
           </PrimaryButton>
@@ -146,7 +206,10 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
 
   // Mostrar overlay em tela cheia correspondendo ao estilo popup.tsx
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-gray-700 z-[999999] flex flex-col items-center justify-center p-6">
+    <div
+      className="simulation-overlay-root fixed inset-0 w-screen h-screen bg-gray-700 z-[999999] flex flex-col items-center justify-center p-6"
+      style={{ fontFamily: OVERLAY_FONT_FAMILY }}
+    >
       {/* Ícone do Banco Animado */}
       <div className="mb-6 animate-pulse">
         <div className="w-32 h-32 bg-gray-800 rounded-full flex justify-center items-center shadow-2xl border-4 border-gray-600">
@@ -161,6 +224,7 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
       <h1
         className="text-4xl font-bold mb-3 text-center drop-shadow-lg"
         style={{ color: "white" }}
+        data-font="title"
       >
         {title}
       </h1>
@@ -169,6 +233,7 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
       <p
         className="text-lg mb-2 text-center drop-shadow-md"
         style={{ color: "white" }}
+        data-font="subtitle"
       >
         {subtitle}
       </p>
@@ -177,6 +242,7 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
       <p
         className="text-sm mb-8 text-center drop-shadow-md"
         style={{ color: "white" }}
+        data-font="bank-name"
       >
         {bankName}
       </p>
@@ -184,8 +250,8 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
       {/* Botão Exibir Processo - TEXTO CINZA ESCURO */}
       <PrimaryButton
         onClick={() => setIsWatching(true)}
-        className="bg-main-green hover:bg-green-600 border-none text-base font-bold cursor-pointer shadow-lg transition-all duration-300 ease-in-out hover:scale-105"
-        style={{ color: "#1f2937" }}
+        className="simulation-overlay-primary-btn bg-main-green hover:bg-green-600 border-none text-base font-bold cursor-pointer shadow-lg transition-all duration-300 ease-in-out hover:scale-105"
+        style={{ color: "#1f2937", fontFamily: OVERLAY_FONT_FAMILY }}
       >
         Exibir processo de simulação
       </PrimaryButton>

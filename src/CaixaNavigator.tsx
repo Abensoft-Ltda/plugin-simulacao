@@ -543,10 +543,37 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({
       printLogs();
     };
 
-    runAutomation().catch((err) => {
-      registerLog(` A critical error stopped the automation: ${err}`);
-      printLogs();
-    });
+    const executeAutomationWithRetries = async () => {
+      for (let attempt = 1; attempt <= MAX_AUTOMATION_ATTEMPTS; attempt++) {
+        try {
+          await runAutomation();
+          return;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          registerLog(
+            ` Automation attempt ${attempt} failed: ${message}`
+          );
+          printLogs();
+
+          if (attempt === MAX_AUTOMATION_ATTEMPTS) {
+            registerLog(
+              ` A critical error stopped the automation: ${message}`
+            );
+            printLogs();
+          } else {
+            registerLog(
+              ` Retrying automation (attempt ${
+                attempt + 1
+              }/${MAX_AUTOMATION_ATTEMPTS}) after short delay.`
+            );
+            printLogs();
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+      }
+    };
+
+    executeAutomationWithRetries();
 
     // Cleanup interval on unmount
     return () => {
