@@ -15,16 +15,27 @@ function generateManifest(): PluginOption {
       const resources = Object.keys(bundle)
         .filter(fileName => fileName.endsWith('.js') || fileName.endsWith('.css'));
 
+        const templateWAR = Array.isArray(manifestTemplate.web_accessible_resources)
+          ? manifestTemplate.web_accessible_resources[0] ?? {}
+          : {};
+
+        const matches = Array.isArray(templateWAR.matches) && templateWAR.matches.length > 0
+          ? templateWAR.matches
+          : [ "https://*.caixa.gov.br/*" ];
+
+      const staticResources = Array.isArray(templateWAR.resources) ? templateWAR.resources : [];
+      const combinedResources = Array.from(new Set([...staticResources, ...resources]));
+
       manifestTemplate.web_accessible_resources = [
         {
-          "resources": resources,
-          "matches": [ "https://*.caixa.gov.br/*" ]
+          resources: combinedResources,
+          matches
         }
       ];
 
       const outDir = options.dir || 'dist';
       fs.writeFileSync(path.resolve(outDir, 'manifest.json'), JSON.stringify(manifestTemplate, null, 2));
-      console.log('Generated manifest.json with dynamic resources.');
+      console.log('Generated manifest.json with dynamic resources and matches from host_permissions.');
     }
   };
 }
@@ -50,6 +61,7 @@ export default defineConfig({
         background: path.resolve(__dirname, 'src/background.ts'),
         caixaNavigation: path.resolve(__dirname, 'src/CaixaNavigator.tsx'),
         caixaNavigationSecondStep: path.resolve(__dirname, 'src/CaixaNavigatorSecondStep.tsx'),
+        bbNavigation: path.resolve(__dirname, 'src/BBNavigator.tsx'),
       },
       output: {
         format: 'es',
@@ -58,6 +70,7 @@ export default defineConfig({
           if (chunkInfo.name === 'popup') return 'popup.js';
           if (chunkInfo.name === 'caixaNavigation') return 'caixaNavigation.js';
           if (chunkInfo.name === 'caixaNavigationSecondStep') return 'caixaNavigationSecondStep.js';
+          if (chunkInfo.name === 'bbNavigation') return 'bbNavigation.js';
           return '[name].[hash].js';
         },
         chunkFileNames: '[name].[hash].js',

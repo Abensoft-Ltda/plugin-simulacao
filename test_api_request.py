@@ -27,7 +27,7 @@ endpoints = {
         "url": f"{base_url}api/model/sl_cad_interacao_simulacao/post/insert_simulacao",
         "method": "POST",
         "data": {
-            "sim_id": 143,
+            "sim_id": 164,
             "if_id": 1,
             "api_data": {
                 "target": "caixa",
@@ -35,18 +35,18 @@ endpoints = {
                 "data": {
                     "result": [
                         {
-                            "prazo": 420,
+                            "prazo": 397,
                             "tipo_amortizacao": "SAC/TR SBPE (TR): Imóvel vinculado a Empreendimento Financiado na CAIXA - Taxa Balcão",
-                            "valor_entrada": 352353.6,
-                            "valor_total": 147646.4,
+                            "valor_entrada": 635881.54,
+                            "valor_total": 164118.46,
                             "juros_nominais": "10.92% a.a.",
                             "juros_efetivos": "11.49% a.a."
                         },
                         {
-                            "prazo": 420,
+                            "prazo": 397,
                             "tipo_amortizacao": "SAC/TR SBPE (TR): Taxa Balcão",
-                            "valor_entrada": 356447.07,
-                            "valor_total": 143552.93,
+                            "valor_entrada": 642197.21,
+                            "valor_total": 157802.79,
                             "juros_nominais": "10.92% a.a.",
                             "juros_efetivos": "11.49% a.a."
                         }

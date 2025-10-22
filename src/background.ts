@@ -1,89 +1,13 @@
 import { writeLog } from './lib/logger';
 import { CaixaFields, BBFields } from './methods/Validation';
-import { getConfig } from './config';
+import { SimulationResultService } from './lib/SimulationResultService';
+import { AuthService } from './lib/AuthService';
 
 let activeAutomations = new Map<number, any>();
 let injectionInProgress = new Set<number>();
 
-// Auth validation function
-async function checkAuth(): Promise<boolean> {
-    try {
-        const config = await getConfig();
-
-        if (config.isDevelopment) {
-            writeLog('[background] Development environment detected - skipping auth validation');
-            return true;
-        }
-
-        const authData = await new Promise<any>((resolve) => {
-            chrome.storage.local.get(['sessionData', 'authToken', 'authExpiry'], (result) => {
-                resolve(result);
-            });
-        });
-
-        // Check if we have auth data
-        if (!authData.sessionData || !authData.authToken) {
-            writeLog('[background] No auth data found in storage');
-            return false;
-        }
-
-        // Check if token is expired
-        if (authData.authExpiry && Date.now() > authData.authExpiry) {
-            writeLog('[background] Auth token expired');
-            await cleanAuthStorage();
-            return false;
-        }
-
-        const apiUrl = `${config.urlSuperleme}api/model/sl_cad_interacao_simulacao/get/acessos_agrupados_json`;
-
-        writeLog('[background] Validating auth with server...');
-
-        // Build headers with cookies
-        const headers: Record<string, string> = {
-            'Accept': 'application/json',
-        };
-
-        if (authData.sessionData) {
-            const cookieParts: string[] = [];
-            for (const [cookieName, cookieValue] of Object.entries(authData.sessionData)) {
-                if (cookieValue) {
-                    cookieParts.push(`${cookieName}=${cookieValue}`);
-                }
-            }
-            if (cookieParts.length > 0) {
-                headers['Cookie'] = cookieParts.join('; ');
-            }
-        }
-
-        const response = await fetch(apiUrl, {
-            method: 'GET',
-            headers: headers,
-            credentials: 'include',
-            mode: 'cors'
-        });
-
-        if (response.ok) {
-            writeLog('[background] Auth validation successful');
-            return true;
-        } else {
-            writeLog(`[background] Auth validation failed with status: ${response.status}`);
-            await cleanAuthStorage();
-            return false;
-        }
-    } catch (error) {
-        writeLog(`[background] Auth validation error: ${error}`);
-        return false;
-    }
-}
-
-async function cleanAuthStorage(): Promise<void> {
-    return new Promise((resolve) => {
-        chrome.storage.local.remove(['sessionData', 'authToken', 'authExpiry'], () => {
-            writeLog('[background] Auth data cleaned from storage');
-            resolve();
-        });
-    });
-}
+const simulationResultService = new SimulationResultService({ logPrefix: '[background]' });
+const authService = new AuthService({ logPrefix: '[background][auth]' });
 
 function normalizeLabel(value: string): string {
     return value
@@ -144,7 +68,7 @@ function resolveBankLabel(targetData: Record<string, any>): { raw: string; norma
 // Bank routing function to handle different bank simulations
 async function startBankSimulation(fields: Record<string, any>, targetName: string): Promise<any> {
     const target = normalizeLabel(targetName);
-    writeLog(`[background] Starting simulation for bank: ${target}`);
+    writeLog(`[background] Iniciando simulação para o banco: ${target}`);
 
     let targetUrl: string;
 
@@ -170,7 +94,7 @@ async function startBankSimulation(fields: Record<string, any>, targetName: stri
             throw new Error(`Unsupported bank target: ${target}`);
     }
 
-    writeLog(`[background] Creating tab for ${target} at ${targetUrl}`);
+    writeLog(`[background] Criando aba para ${target} em ${targetUrl}`);
 
 
     // Create a new tab for the target bank simulation
@@ -181,7 +105,7 @@ async function startBankSimulation(fields: Record<string, any>, targetName: stri
                 return;
             }
 
-            writeLog(`[background] Tab created successfully for ${target}: ${tab.id}`);
+            writeLog(`[background] Aba criada com sucesso para ${target}: ${tab.id}`);
 
             const automationData = {
                 fields,
@@ -192,7 +116,7 @@ async function startBankSimulation(fields: Record<string, any>, targetName: stri
             };
 
             activeAutomations.set(tab.id, automationData);
-            writeLog(`[background] Automation data stored for tab ${tab.id}`);
+            writeLog(`[background] Dados da automação armazenados para a aba ${tab.id}`);
 
         });
     });
@@ -200,7 +124,7 @@ async function startBankSimulation(fields: Record<string, any>, targetName: stri
 
 chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
     if (changeInfo.status === 'complete' && tab.url && tab.url.includes('superleme')) {
-        writeLog(`[background] Superleme page detected: ${tab.url}`);
+        writeLog(`[background] Página do Superleme detectada: ${tab.url}`);
         
         chrome.scripting.executeScript({
             target: { tabId: tabId },
@@ -274,67 +198,7 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
         chrome.scripting.executeScript({
             target: { tabId: tabId },
             world: 'MAIN',
-            func: () => {
-                const extractAuth = () => {
-                    const allCookies = document.cookie.split(";");
-                    
-                    const getCookie = (name: string) => {
-                        const cookie = allCookies.find(cookie => cookie.trim().startsWith(name + '='));
-                        return cookie ? cookie.split("=").slice(1).join("=").trim() : null;
-                    };
-
-                    // Find cookies by pattern for dynamic names
-                    const getCookieByPattern = (pattern: string) => {
-                        const cookie = allCookies.find(cookie => cookie.trim().includes(pattern));
-                        if (!cookie) return { name: null, value: null };
-                        const trimmed = cookie.trim();
-                        const eqIndex = trimmed.indexOf('=');
-                        return {
-                            name: trimmed.substring(0, eqIndex),
-                            value: trimmed.substring(eqIndex + 1)
-                        };
-                    };
-
-                    const cotonicSid = getCookie('cotonic-sid');
-                    const zAuth = getCookie('z.auth');
-                    
-                    if (cotonicSid && zAuth) {
-                        // Find HotJar cookies dynamically
-                        const hjSession = getCookieByPattern('_hjSession_');
-                        const hjSessionUser = getCookieByPattern('_hjSessionUser_');
-
-                        const authData = {
-                            authToken: zAuth,
-                            authExpiry: new Date().getTime() + (24 * 60 * 60 * 1000),
-                            sessionData: {
-                                'cotonic-sid': cotonicSid,
-                                'z.auth': zAuth,
-                                'z.lang': getCookie('z.lang'),
-                                'z.tz': getCookie('z.tz'),
-                                'timezone': getCookie('timezone'),
-                                'cf_clearance': getCookie('cf_clearance')
-                            } as Record<string, string>
-                        };
-
-                        // Add HotJar cookies with their dynamic names
-                        if (hjSession.name && hjSession.value) {
-                            authData.sessionData[hjSession.name] = hjSession.value;
-                        }
-                        if (hjSessionUser.name && hjSessionUser.value) {
-                            authData.sessionData[hjSessionUser.name] = hjSessionUser.value;
-                        }
-
-
-                        window.postMessage({
-                            type: 'SUPERLEME_TO_BACKGROUND',
-                            payload: { action: 'storeAuth', authData: authData }
-                        }, '*');
-                    }
-                };
-                
-                extractAuth();
-                setInterval(extractAuth, 2000);
-            }
+            func: authService.buildExtractAuthScript()
         }).catch(() => {
         });
     }
@@ -343,12 +207,12 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
     const automationData = activeAutomations.get(tabId);
     if (!automationData) return;
     
-    writeLog(`[background] Tab ${tabId} status: ${changeInfo.status}, URL: ${tab.url}`);
+    writeLog(`[background] Aba ${tabId} status: ${changeInfo.status}, URL: ${tab.url}`);
     
     if (changeInfo.status === 'complete' && tab.url) {
         const target = automationData.target || 'caixa economica federal';
         const normalizedTarget = normalizeLabel(target);
-        writeLog(`[background] Checking if tab ${tabId} is a ${normalizedTarget} page`);
+        writeLog(`[background] Verificando se a aba ${tabId} é uma página de ${normalizedTarget}`);
 
         let isBankPage = false;
 
@@ -357,13 +221,13 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
             case 'caixa':
             case 'caixa economica federal':
                 isBankPage = tab.url.includes('caixa.gov.br');
-                writeLog(`[background] Caixa page check: ${tab.url} includes 'caixa.gov.br'? ${isBankPage}`);
+                writeLog(`[background] Verificação da página da Caixa: ${tab.url} contém 'caixa.gov.br'? ${isBankPage}`);
                 break;
             case 'banco do brasil s.a':
             case 'banco do brasil':
             case 'bb':
                 isBankPage = tab.url.includes('bb.com.br');
-                writeLog(`[background] BB page check: ${tab.url} includes 'bb.com.br'? ${isBankPage}`);
+                writeLog(`[background] Verificação da página do BB: ${tab.url} contém 'bb.com.br'? ${isBankPage}`);
                 break;
             case 'santander':
                 isBankPage = tab.url.includes('santander.com.br');
@@ -375,31 +239,31 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
                 isBankPage = tab.url.includes('itau.com.br');
                 break;
             default:
-                writeLog(`[background] Unknown bank target: ${target}`);
+                writeLog(`[background] Banco alvo desconhecido: ${target}`);
                 return;
         }
 
         if (!isBankPage) {
-            writeLog(`[background] Not on ${target} page yet, URL: ${tab.url} - waiting...`);
+            writeLog(`[background] Ainda não estamos na página de ${target}, URL: ${tab.url} - aguardando...`);
             return;
         }
 
-        writeLog(`[background] ${target} page detected! Navigation complete: ${tab.url}`);
+        writeLog(`[background] Página de ${target} detectada! Navegação concluída: ${tab.url}`);
 
         // Handle Caixa-specific step detection
         if (target.toLowerCase() === 'caixa') {
             const secondStepUrl = 'https://habitacao.caixa.gov.br/siopiweb-web/simulaOperacaoInternet.do?method=enquadrarProdutos';
             if (tab.url.startsWith(secondStepUrl)) {
-                writeLog(`[background] CAIXA SECOND STEP DETECTED! Injecting CaixaNavigatorSecondStep`);
+                writeLog(`[background] SEGUNDA ETAPA DA CAIXA DETECTADA! Injetando CaixaNavigatorSecondStep`);
             } else {
-                writeLog(`[background] Caixa first step or other page. Injecting regular CaixaNavigator`);
+                writeLog(`[background] Primeira etapa da Caixa ou outra página. Injetando CaixaNavigator padrão`);
             }
         }
         
-        writeLog(`[background] Starting script injection for ${target} tab ${tabId}`);
+        writeLog(`[background] Iniciando injeção de scripts para a aba ${tabId} de ${target}`);
 
         if (injectionInProgress.has(tabId)) {
-            writeLog(`[background] Injection already in progress for tab ${tabId}, skipping`);
+            writeLog(`[background] Injeção já em andamento para a aba ${tabId}, ignorando`);
             return;
         }
         
@@ -408,11 +272,11 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
         setTimeout(() => {
             injectScripts(tabId, automationData, tab.url || '', target)
                 .then(() => {
-                    writeLog(`[background] Script injection completed for ${target} tab ${tabId}`);
+                    writeLog(`[background] Injeção de scripts concluída para ${target} na aba ${tabId}`);
                     injectionInProgress.delete(tabId);
                 })
                 .catch((error) => {
-                    writeLog(`[background] Script injection failed for ${target} tab ${tabId}: ${error}`);
+                    writeLog(`[background] Injeção de scripts falhou para ${target} na aba ${tabId}: ${error}`);
                     injectionInProgress.delete(tabId);
                 });
         }, 100); 
@@ -421,7 +285,7 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
 
 chrome.tabs.onRemoved.addListener((closedTabId: number) => {
     if (activeAutomations.has(closedTabId)) {
-        writeLog(`[background] Tab ${closedTabId} closed, cleaning up`);
+        writeLog(`[background] Aba ${closedTabId} fechada, realizando limpeza`);
         activeAutomations.delete(closedTabId);
     }
 });
@@ -429,17 +293,14 @@ chrome.tabs.onRemoved.addListener((closedTabId: number) => {
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
     if (request.action === "storeAuth") {
-
-        // Store the auth data including session cookies
-        chrome.storage.local.set(request.authData, () => {
-            if (chrome.runtime.lastError) {
-                console.error('[background] Error storing auth:', chrome.runtime.lastError);
-                writeLog(`[background] Error storing auth: ${chrome.runtime.lastError.message}`);
-                sendResponse({ status: "error" });
-            } else {
+        authService.store(request.authData)
+            .then(() => {
                 sendResponse({ status: "success" });
-            }
-        });
+            })
+            .catch((error) => {
+                console.error('[background] Erro ao salvar dados de autenticação:', error);
+                sendResponse({ status: "error", message: error instanceof Error ? error.message : String(error) });
+            });
         return true;
     }
 
@@ -451,33 +312,40 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
 
     if (request.action === "startSimulationRequest") {
-        console.log('[background] Processing startSimulationRequest');
-        writeLog('[background] Processing startSimulationRequest');
+        console.log('[background] Processando startSimulationRequest');
+        writeLog('[background] Processando startSimulationRequest');
         chrome.storage.local.remove(['simulationResult']);
-        writeLog('[background] Simulation request received.');
+        writeLog('[background] Solicitação de simulação recebida.');
         const targets = request.data?.targets;
         if (!Array.isArray(targets) || targets.length === 0) {
-            writeLog('[background] No valid simulation targets received.');
+            writeLog('[background] Nenhum alvo de simulação válido recebido.');
             sendResponse({ status: "error", message: "No valid targets received." });
             return true;
         }
 
         (async () => {
+            const isAuthValid = await authService.validate();
+            if (!isAuthValid) {
+                writeLog('[background] Autenticação inválida ou expirada. Abortando simulações.');
+                sendResponse({ status: "error", message: "Autenticação inválida ou expirada." });
+                return;
+            }
+
             const results: Array<{ target: string; result?: any; errors?: string[] }> = [];
             
             // Create all simulation promises in parallel
             const simulationPromises = targets.map(async (target, idx) => {
-                writeLog(`[background] Starting parallel simulation for target[${idx}]...`);
+                writeLog(`[background] Iniciando simulação paralela para target[${idx}]...`);
                 const resolvedBank = resolveBankLabel(target);
 
                 if (!resolvedBank) {
-                    const message = `[background] Unknown bank target for target[${idx}]. Skipping simulation.`;
+                    const message = `[background] Banco alvo desconhecido para target[${idx}]. Ignorando simulação.`;
                     writeLog(message);
                     return { target: `unknown_${idx}`, errors: [message] };
                 }
 
                 const { raw: bankLabelRaw, normalized: bankLabelNormalized } = resolvedBank;
-                writeLog(`[background] Detected bank target for target[${idx}]: ${bankLabelRaw}`);
+                writeLog(`[background] Banco alvo detectado para target[${idx}]: ${bankLabelRaw}`);
                 const isBancoDoBrasil = bankLabelNormalized === 'banco do brasil s.a';
                 
                 let fields: Record<string, any> = {};
@@ -501,11 +369,11 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 }
 
                 if (errors.length > 0) {
-                    writeLog(`[background] Validation errors for ${targetName}: ${errors.join(', ')}`);
+                    writeLog(`[background] Erros de validação para ${targetName}: ${errors.join(', ')}`);
                     return { target: targetName, errors };
                 }
 
-                writeLog(`[background] Validation passed for ${targetName}. Starting simulation...`);
+                writeLog(`[background] Validação aprovada para ${targetName}. Iniciando simulação...`);
 
                 try {
                     const timeoutPromise = new Promise((_, reject) =>
@@ -517,18 +385,18 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                         timeoutPromise
                     ]);
 
-                    writeLog(`[background] Simulation for ${targetName} COMPLETED.`);
+                    writeLog(`[background] Simulação para ${targetName} CONCLUÍDA.`);
                     return { target: targetName, result };
 
                 } catch (error) {
-                    const errorMessage = error instanceof Error ? error.message : 'Unknown simulation error';
-                    writeLog(`[background] ERROR during simulation for ${targetName}: ${errorMessage}`);
+                    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido na simulação';
+                    writeLog(`[background] ERRO durante a simulação para ${targetName}: ${errorMessage}`);
                     return { target: targetName, errors: [errorMessage] };
                 }
             });
 
             // Wait for all simulations to complete (or fail)
-            writeLog(`[background] Waiting for ${simulationPromises.length} simulations to complete...`);
+            writeLog(`[background] Aguardando ${simulationPromises.length} simulações terminarem...`);
             const settledResults = await Promise.allSettled(simulationPromises);
 
             // Process results from all simulations
@@ -538,11 +406,11 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                     results.push(value);
 
                     if (Array.isArray(value.errors) && value.errors.length > 0) {
-                        writeLog(`[background] Simulation ${idx} completed with errors: ${value.errors.join('; ')}`);
+                        writeLog(`[background] Simulação ${idx} concluída com erros: ${value.errors.join('; ')}`);
                     } else if (value.result === undefined || value.result === null) {
-                        writeLog(`[background] Simulation ${idx} finished without result payload.`);
+                        writeLog(`[background] Simulação ${idx} finalizada sem payload de resultado.`);
                     } else {
-                        writeLog(`[background] Simulation ${idx} completed successfully`);
+                        writeLog(`[background] Simulação ${idx} concluída com sucesso`);
                     }
                 } else {
                     const resolved = targets[idx] ? resolveBankLabel(targets[idx]) : null;
@@ -552,7 +420,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                         target: targetName, 
                         errors: [`Promise rejection: ${errorMessage}`] 
                     });
-                    writeLog(`[background] Simulation ${idx} promise rejected: ${errorMessage}`);
+                    writeLog(`[background] Promise da simulação ${idx} rejeitada: ${errorMessage}`);
                 }
             });
 
@@ -563,7 +431,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 ? "success"
                 : (successfulResults.length > 0 ? "partial" : "error");
 
-            writeLog(`[background] All ${targets.length} simulations processed. Success: ${successfulResults.length}, Failed: ${failedResults.length}.`);
+            writeLog(`[background] Todas as ${targets.length} simulações processadas. Sucesso: ${successfulResults.length}, Falha: ${failedResults.length}.`);
 
             const summaryPayload = {
                 completedAt: Date.now(),
@@ -577,9 +445,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
             chrome.storage.local.set({ simulationSummary: summaryPayload }, () => {
                 if (chrome.runtime.lastError) {
-                    writeLog(`[background] Failed to persist simulation summary: ${chrome.runtime.lastError.message}`);
+                    writeLog(`[background] Falha ao salvar o resumo da simulação: ${chrome.runtime.lastError.message}`);
                 } else {
-                    writeLog('[background] Simulation summary stored in chrome.storage.local.');
+                    writeLog('[background] Resumo da simulação armazenado em chrome.storage.local.');
                 }
             });
 
@@ -590,9 +458,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     }
 
     if (request.action === "simulationResult") {
+        const requestId = (request as any).__requestId;
         const resultPayload = request.payload;
-        console.log('[background] Received simulation result:', resultPayload);
-        writeLog(`[background] Received simulation result.`);
+        console.log('[background] Resultado da simulação recebido:', resultPayload);
+        writeLog(`[background] Resultado da simulação recebido.`);
 
         const senderId = _sender.tab?.id;
 
@@ -612,21 +481,21 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
             ifId = resultPayload.if_id || resultPayload.if || ifId;
         }
 
-        writeLog(`[background] Processing result: sim_id=${simId}, if_id=${ifId}`);
+        writeLog(`[background] Processando resultado: sim_id=${simId}, if_id=${ifId}`);
 
         (async () => {
             let responseStatus = "success";
             
             if (simId !== 'unknown') {
                 try {
-                    await sendResultsToServer(simId, ifId, resultPayload);
-                    writeLog(`[background] Result sent to server and stored successfully`);
+                    await simulationResultService.sendResultsToServer(simId, ifId, resultPayload);
+                    writeLog(`[background] Resultado enviado ao servidor e armazenado com sucesso`);
                 } catch (error) {
-                    writeLog(`[background] Send failed: ${error instanceof Error ? error.message : String(error)}`);
+                    writeLog(`[background] Falha no envio: ${error instanceof Error ? error.message : String(error)}`);
                     responseStatus = "failure";
                 }
             } else {
-                writeLog(`[background] Invalid sim_id, skipping server send`);
+                writeLog(`[background] sim_id inválido. Pulando envio ao servidor`);
                 responseStatus = "failure";
             }
 
@@ -637,7 +506,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 }
             }
 
-            sendResponse({ status: responseStatus });
+            sendResponse({ status: responseStatus, requestId });
         })();
 
         return true;
@@ -650,20 +519,20 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
     try {
 
         target = normalizeLabel(target);
-        writeLog(`[background] Injecting data into tab ${tabId} for ${target}.`);
+        writeLog(`[background] Injetando dados na aba ${tabId} para ${target}.`);
 
-        writeLog(`[background] Injecting App.css into tab ${tabId}.`);
+        writeLog(`[background] Injetando App.css na aba ${tabId}.`);
         try {
             await chrome.scripting.insertCSS({
                 target: { tabId: tabId },
                 files: ['App.css']
             });
-            writeLog(`[background] App.css injected successfully.`);
+            writeLog(`[background] App.css injetado com sucesso.`);
         } catch (cssError: any) {
-            writeLog(`[background] Failed to inject CSS: ${cssError.message}`);
+            writeLog(`[background] Falha ao injetar CSS: ${cssError.message}`);
         }
 
-        writeLog(`[background] Injecting automation payload into tab ${tabId}.`);
+        writeLog(`[background] Injetando payload de automação na aba ${tabId}.`);
         await chrome.scripting.executeScript({
             target: { tabId: tabId },
             world: 'MAIN',
@@ -672,42 +541,50 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
             },
             args: [data]
         });
-        writeLog(`[background] Automation payload injected into tab ${tabId}.`);
+        writeLog(`[background] Payload de automação injetado na aba ${tabId}.`);
 
-        writeLog(`[background] Injecting bridge content script into tab ${tabId}.`);
+        writeLog(`[background] Injetando script bridge na aba ${tabId}.`);
         await chrome.scripting.executeScript({
             target: { tabId: tabId },
             world: 'ISOLATED',
             func: () => {
-                console.log('[bridge] Bridge content script loaded');
+                console.log('[bridge] Script de conteúdo da ponte carregado');
 
                 window.addEventListener('message', (event) => {
                     if (event.source !== window) return;
 
                     if (event.data.type === 'CAIXA_TO_BACKGROUND') {
-                        console.log('[bridge] Received message from main world:', event.data);
+                        console.log('[bridge] Mensagem recebida do mundo principal:', event.data);
 
-                        chrome.runtime.sendMessage(event.data.payload, (response) => {
+                        const requestId = event.data.requestId;
+                        const payload = {
+                            ...event.data.payload,
+                            __requestId: requestId
+                        };
+
+                        chrome.runtime.sendMessage(payload, (response) => {
                             if (chrome.runtime.lastError) {
-                                console.error('[bridge] Error sending to background:', chrome.runtime.lastError);
+                                console.error('[bridge] Erro ao enviar para o background:', chrome.runtime.lastError);
                                 window.postMessage({
                                     type: 'BACKGROUND_TO_CAIXA',
                                     success: false,
-                                    error: chrome.runtime.lastError.message
+                                    error: chrome.runtime.lastError.message,
+                                    requestId
                                 }, '*');
                             } else {
-                                console.log('[bridge] Background response:', response);
+                                console.log('[bridge] Resposta do background:', response);
                                 window.postMessage({
                                     type: 'BACKGROUND_TO_CAIXA',
                                     success: true,
-                                    response: response
+                                    response: response,
+                                    requestId
                                 }, '*');
                             }
                         });
                     }
                 });
 
-                console.log('[bridge] Bridge setup complete');
+                console.log('[bridge] Configuração da ponte concluída');
             }
         });
 
@@ -717,20 +594,20 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
             const secondStepUrl = 'https://habitacao.caixa.gov.br/siopiweb-web/simulaOperacaoInternet.do?method=enquadrarProdutos';
             if (url.startsWith(secondStepUrl)) {
                 scriptToInject = 'caixaNavigationSecondStep.js';
-                writeLog(`[background] CAIXA SECOND STEP - Injecting ${scriptToInject}`);
+                writeLog(`[background] CAIXA SEGUNDA ETAPA - Injetando ${scriptToInject}`);
             } else {
                 scriptToInject = 'caixaNavigation.js';
-                writeLog(`[background] CAIXA FIRST STEP - Injecting ${scriptToInject}`);
+                writeLog(`[background] CAIXA PRIMEIRA ETAPA - Injetando ${scriptToInject}`);
             }
         } else if (target === 'banco do brasil s.a' || target === 'banco do brasil' || target === 'bb') {
             scriptToInject = 'bbNavigation.js';
-            writeLog(`[background] BANCO DO BRASIL - Injecting ${scriptToInject}`);
+            writeLog(`[background] BANCO DO BRASIL - Injetando ${scriptToInject}`);
         } else {
             scriptToInject = 'caixaNavigation.js'; 
-            writeLog(`[background] ${target.toUpperCase()} - Injecting ${scriptToInject} (using fallback)`);
+            writeLog(`[background] ${target.toUpperCase()} - Injetando ${scriptToInject} (fallback)`);
         }
 
-        writeLog(`[background] Injecting main script '${scriptToInject}' into tab ${tabId}.`);
+        writeLog(`[background] Injetando script principal '${scriptToInject}' na aba ${tabId}.`);
 
         // Get the script URL in extension context first
         const scriptUrl = chrome.runtime.getURL(scriptToInject);
@@ -744,262 +621,18 @@ async function injectScripts(tabId: number, data: any, url: string, target: stri
                 script.type = 'module';
                 script.src = scriptUrl;  
                 script.onload = () => {
-                    console.log(`[background-loader] ${scriptName} loaded successfully`);
+                    console.log(`[background-loader] ${scriptName} carregado com sucesso`);
                 };
                 script.onerror = (e) => {
-                    console.error(`[background-loader] ${scriptName} failed to load:`, e);
+                    console.error(`[background-loader] ${scriptName} falhou ao carregar:`, e);
                 };
                 document.head.appendChild(script);
             },
             args: [scriptUrl, scriptToInject]
         });
 
-        writeLog(`[background] All scripts injected successfully for tab ${tabId}.`);
+        writeLog(`[background] Todos os scripts injetados com sucesso na aba ${tabId}.`);
     } catch (err: any) {
-        writeLog(`[background] Script injection failed: ${err.message}`);
-    }
-}
-
-async function sendResultsToServer(simId: string, ifId: string, scrapedResults: any) {
-    try {
-        // Helper function to clean monetary values
-        const cleanMonetaryValue = (value: any): number | null => {
-            if (typeof value === 'number') return value;
-            if (typeof value !== 'string') return null;
-
-            // Remove currency symbols (R$, $, etc.) and whitespace
-            let cleaned = value.replace(/[R$\s]/g, '');
-
-            // Brazilian format: 380.651,46 -> convert to 380651.46
-            // Remove thousands separator (.) and replace decimal separator (,) with (.)
-            cleaned = cleaned.replace(/\./g, '').replace(/,/g, '.');
-
-            const parsed = parseFloat(cleaned);
-            return isNaN(parsed) ? null : parsed;
-        };
-
-        const toResultArray = (source: any): any[] => {
-            if (Array.isArray(source)) return [...source];
-            if (source && typeof source === 'object' && Array.isArray(source.result)) {
-                return [...source.result];
-            }
-            return [];
-        };
-
-        const ensureString = (value: any, fallback: string): string => {
-            if (typeof value !== 'string') return fallback;
-            const trimmed = value.trim();
-            return trimmed.length === 0 ? fallback : trimmed;
-        };
-
-        const targetIf = ensureString(scrapedResults?.if ?? scrapedResults?.target ?? ifId, 'unknown');
-        const statusValue = ensureString(scrapedResults?.status ?? scrapedResults?.data?.status, 'success').toLowerCase() === 'failure' ? 'failure' : 'success';
-
-        const combinedResults: any[] = [];
-
-        const primaryResults = toResultArray(scrapedResults?.result ?? scrapedResults?.data);
-        combinedResults.push(...primaryResults);
-
-        if (statusValue === 'failure') {
-            const failureMessage = scrapedResults?.message ?? scrapedResults?.data?.message;
-            if (failureMessage) {
-                combinedResults.push(ensureString(failureMessage, 'error'));
-            }
-        }
-
-        const normalizedResults = combinedResults.map((entry) => {
-            if (typeof entry === 'string') {
-                const trimmed = entry.trim();
-                const prefix = `${targetIf}:`;
-                if (trimmed.toLowerCase().startsWith(prefix.toLowerCase())) {
-                    return trimmed;
-                }
-                return `${prefix} ${trimmed}`;
-            }
-
-            if (entry && typeof entry === 'object') {
-                return {
-                    if: entry.if ?? targetIf,
-                    ...entry
-                };
-            }
-
-            return entry;
-        });
-
-        const processedData = {
-            target: targetIf,
-            status: statusValue,
-            data: {
-                result: normalizedResults
-            }
-        };
-
-        writeLog(`[background] Original results: ${JSON.stringify(scrapedResults, null, 2)}`);
-        writeLog(`[background] Processed results: ${JSON.stringify(processedData, null, 2)}`);
-
-        const simulationResult = {
-            sim_id: simId,
-            if_id: ifId,
-            api_data: processedData
-        };
-
-        writeLog(`[background] Storing simulation result: sim_id=${simId}, if_id=${ifId}`);
-
-        // Store in chrome.storage.local
-        await new Promise<void>((resolve, reject) => {
-            chrome.storage.local.set({ simulationResult }, () => {
-                if (chrome.runtime.lastError) {
-                    writeLog(`[background] Error storing result: ${chrome.runtime.lastError.message}`);
-                    reject(new Error(chrome.runtime.lastError.message));
-                } else {
-                    writeLog(`[background] Simulation result stored successfully in chrome.storage.local`);
-                    resolve();
-                }
-            });
-        });
-
-        const config = await getConfig();
-        const baseUrl = config.urlSuperleme;
-        const apiUrl = `${baseUrl}api/model/sl_cad_interacao_simulacao/post/insert_simulacao`;
-
-        writeLog(`[background] Preparing to send results to server`);
-        writeLog(`[background] Base URL: ${baseUrl}`);
-        writeLog(`[background] Full API URL: ${apiUrl}`);
-        writeLog(`[background] Environment: ${config.isDevelopment ? 'development' : 'production'}`);
-
-        // Retrieve stored auth cookies
-        const authData = await new Promise<any>((resolve) => {
-            chrome.storage.local.get(['sessionData', 'authToken'], (result) => {
-                resolve(result);
-            });
-        });
-
-        writeLog(`[background] Retrieved auth data from storage`);
-        writeLog(`[background] Has sessionData: ${!!authData.sessionData}`);
-        writeLog(`[background] Has authToken: ${!!authData.authToken}`);
-
-        if (authData.sessionData) {
-            writeLog(`[background] Available cookies: ${Object.keys(authData.sessionData).join(', ')}`);
-        }
-
-        // Build headers matching the working Python script exactly
-        const headers: Record<string, string> = {
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'pt-BR,pt;q=0.9',
-            'Content-Type': 'application/json',
-            'cache-control': 'no-cache',
-            'pragma': 'no-cache',
-            'priority': 'u=0, i',
-            'sec-ch-ua': '"Chromium";v="131", "Not_A Brand";v="24"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Linux"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'none',
-            'sec-fetch-user': '?1',
-            'upgrade-insecure-requests': '1',
-            'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-        };
-
-        // Add authentication cookies to headers if available
-        if (authData.sessionData) {
-            const cookieParts: string[] = [];
-
-            // Add cookies in the same order as Python script for consistency
-            const cookieOrder = ['_hjSessionUser_3537769', 'cf_clearance', 'cotonic-sid', 'startHidden', 'timezone', 'z.auth', 'z.lang', 'z.tz'];
-
-            // First add cookies in preferred order
-            for (const cookieName of cookieOrder) {
-                if (authData.sessionData[cookieName]) {
-                    cookieParts.push(`${cookieName}=${authData.sessionData[cookieName]}`);
-                }
-            }
-
-            // Then add any remaining cookies not in the list
-            for (const [cookieName, cookieValue] of Object.entries(authData.sessionData)) {
-                if (cookieValue && !cookieOrder.includes(cookieName)) {
-                    cookieParts.push(`${cookieName}=${cookieValue}`);
-                }
-            }
-
-            if (cookieParts.length > 0) {
-                headers['Cookie'] = cookieParts.join('; ');
-                writeLog(`[background] Added Cookie header with ${cookieParts.length} cookies`);
-                writeLog(`[background] Cookie names: ${Object.keys(authData.sessionData).filter(k => authData.sessionData[k]).join(', ')}`);
-            } else {
-                writeLog(`[background] No cookies to add to headers`);
-            }
-        } else {
-            writeLog(`[background] WARNING: No session data found in storage - request may fail authentication`);
-        }
-
-        // Build request body with processed results
-        const requestBody = {
-            sim_id: simId,
-            if_id: ifId,
-            api_data: processedData
-        };
-
-        writeLog(`[background] Request body to send: ${JSON.stringify(requestBody, null, 2)}`);
-
-        console.log('[background] Fetch starting...', {
-            url: apiUrl,
-            method: 'POST',
-            headers: headers,
-            body: requestBody
-        });
-
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody),
-            credentials: 'include',
-            mode: 'cors'
-        });
-
-        writeLog(`[background] Fetch completed. Response status: ${response.status}`);
-        writeLog(`[background] Response status text: ${response.statusText}`);
-        writeLog(`[background] Response headers: ${JSON.stringify([...response.headers.entries()])}`);
-
-        if (response.ok) {
-            const contentType = response.headers.get('Content-Type') || '';
-            let responseData;
-
-            if (contentType.includes('application/json')) {
-                responseData = await response.json();
-                console.log('[background] Successfully sent results to server. Response:', responseData);
-                writeLog(`[background] Successfully sent results to server. Response: ${JSON.stringify(responseData)}`);
-            } else {
-                const responseText = await response.text();
-                console.log('[background] Successfully sent results to server. Response (text):', responseText);
-                writeLog(`[background] Successfully sent results to server. Response (text): ${responseText}`);
-                responseData = { text: responseText };
-            }
-
-            return responseData;
-        } else {
-            const errorText = await response.text();
-            console.error('[background] Server returned error. Status:', response.status, 'Error:', errorText);
-            writeLog(`[background] Server error. Status: ${response.status}, Error: ${errorText}`);
-            throw new Error(`Server error ${response.status}: ${errorText}`);
-        }
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error ? error.stack : '';
-        console.error('[background] Error sending results:', error);
-        writeLog(`[background] Error sending results: ${errorMessage}`);
-        writeLog(`[background] Error type: ${error instanceof TypeError ? 'TypeError' : typeof error}`);
-        if (errorStack) {
-            writeLog(`[background] Error stack: ${errorStack}`);
-        }
-
-        // Check if it's a network error
-        if (error instanceof TypeError && errorMessage.includes('fetch')) {
-            console.warn('[background] Network/CORS error - the server may not be accessible or CORS headers may be missing.');
-            writeLog(`[background] This appears to be a network/CORS error. The server may not be accessible or CORS headers may be missing.`);
-        }
-
-        throw error;
+        writeLog(`[background] Injeção de scripts falhou: ${err.message}`);
     }
 }

@@ -100,7 +100,7 @@ const Popup: React.FC = () => {
                     <h1 className="text-2xl font-bold">Simulador Habitacional</h1>
                     <button 
                         onClick={handleLogout}
-                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                        className="bg-red-500 hover:bg-red-600 text-white pl-3 pr-3 pt-1 pb-1 rounded text-sm transition-colors"
                     >
                         Sair
                     </button>
@@ -113,7 +113,7 @@ const Popup: React.FC = () => {
 
                     {isDev && simulationResult && (
                         <div className="bg-gray-800 rounded-lg p-2 border border-gray-600 flex flex-col overflow-scroll scrollbar-dark flex-grow flex-shrink basis-1/2 max-h-52">
-                            <h4 className="text-xs font-bold text-gray-400 mb-1 px-2 flex-shrink-0">Last Simulation Result (Dev Mode)</h4>
+                            <h4 className="text-xs font-bold text-gray-400 mb-1 pl-2 pr-2 flex-shrink-0">Last Simulation Result (Dev Mode)</h4>
                             <pre className="text-xs text-gray-300 whitespace-pre-wrap">
                                 {JSON.stringify(simulationResult, null, 2)}
                             </pre>

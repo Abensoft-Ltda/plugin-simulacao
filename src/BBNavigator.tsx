@@ -1,7 +1,10 @@
 import React from 'react';
-import { createRoot } from 'react-dom/client';
 import './App.css';
 import { SimulationOverlay } from './SimulationOverlay';
+import { SimulationPayload } from './lib/SimulationPayload';
+import { autoMountNavigator } from './lib/autoMountNavigator';
+import { BankMessenger } from './lib/BankMessenger';
+import { MAX_AUTOMATION_ATTEMPTS } from './lib/constants';
 
 declare global {
   interface Window {
@@ -168,7 +171,7 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
     selector: string,
     value: string,
     delay = 500,
-    retries = 3,
+    retries = MAX_AUTOMATION_ATTEMPTS,
     options: SimulateInputOptions = {}
   ): Promise<boolean> {
     const { typePerChar = false, clearExisting = true, perCharDelay = 60, finalValueCheck } = options;
@@ -602,7 +605,7 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
 
     ensureHiddenInputValue();
 
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < MAX_AUTOMATION_ATTEMPTS; attempt++) {
       button.focus();
       button.click();
       await delay(180);
@@ -1082,75 +1085,6 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
     return results;
   }
 
-  async function sendResultsWithRetry(resultPayload: Record<string, any>, retries = 3): Promise<boolean> {
-    const normalizedResult = Array.isArray(resultPayload.result)
-      ? resultPayload.result
-      : [];
-
-    const bankId = (resultPayload.if ?? 'bb').toString();
-
-    const payload: Record<string, any> = {
-      if: bankId,
-      status: (resultPayload.status ?? 'success').toString().toLowerCase() === 'failure' ? 'failure' : 'success',
-      result: normalizedResult.map(entry => {
-        if (entry && typeof entry === 'object') {
-          return {
-            if: entry.if ?? bankId,
-            ...entry
-          };
-        }
-        const message = String(entry ?? 'Unspecified error').trim();
-        const prefix = `${bankId}:`;
-        if (message.toLowerCase().startsWith(prefix.toLowerCase())) {
-          return message;
-        }
-        return `${prefix} ${message}`;
-      }),
-    };
-
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          let timeoutId: number;
-          const responseHandler = (event: MessageEvent) => {
-            if (event.source !== window) return;
-            if (event.data.type === 'BACKGROUND_TO_CAIXA') {
-              window.removeEventListener('message', responseHandler);
-              clearTimeout(timeoutId);
-              resolve();
-            }
-          };
-
-          window.addEventListener('message', responseHandler);
-
-          timeoutId = window.setTimeout(() => {
-            window.removeEventListener('message', responseHandler);
-            reject(new Error('Tempo de resposta esgotado'));
-          }, 5000);
-
-          window.postMessage({
-            type: 'CAIXA_TO_BACKGROUND',
-            payload: { action: "simulationResult", payload }
-          }, '*');
-        });
-
-        registerLog(` Resultado enviado ao background (tentativa ${attempt}/${retries}).`);
-        printLogs();
-        return true;
-      } catch (error: any) {
-        registerLog(` Falha ao enviar resultados do BB na tentativa ${attempt}: ${error?.message || error}`);
-        printLogs();
-        if (attempt < retries) {
-          await delay(800);
-        }
-      }
-    }
-
-    registerLog(' Tentativas de envio dos resultados do BB esgotadas.');
-    printLogs();
-    return false;
-  }
-
   async function sendFailureResult(message: string): Promise<void> {
     if (hasSentResultsRef.current) {
       return;
@@ -1158,28 +1092,28 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
 
     const normalizeFailure = (raw: string | undefined | null): string => {
       const cleaned = (raw ?? '').toString().trim();
-      const base = cleaned.length > 0 ? cleaned : 'Unable to complete Banco do Brasil simulation.';
+      const base = cleaned.length > 0 ? cleaned : 'Não foi possível concluir a simulação no Banco do Brasil.';
       const prefix = 'bb:';
-      if (base.toLowerCase().startsWith(prefix)) {
-        return base;
-      }
-      return `${prefix} ${base}`;
+      return base.toLowerCase().startsWith(prefix) ? base : `${prefix} ${base}`;
     };
 
     const mensagemFinal = normalizeFailure(message);
+    const payload = new SimulationPayload('bb', 'failure');
+    payload.addFailure(mensagemFinal);
 
-    const enviado = await sendResultsWithRetry({
-      if: 'bb',
-      status: 'failure',
-      result: [mensagemFinal]
+    const messengerResult = await BankMessenger.sendSimulationPayload(payload, {
+      logPrefix: 'bbNavigation.js',
+      registerLog,
+      printLogs,
     });
 
-    if (enviado) {
-      hasSentResultsRef.current = true;
-      setIsComplete(true);
-      registerLog(mensagemFinal);
-      printLogs();
+    hasSentResultsRef.current = true;
+    setIsComplete(true);
+    registerLog(mensagemFinal);
+    if (!messengerResult.confirmed) {
+      registerLog(` Confirmação do background não recebida (requestId=${messengerResult.requestId}).`);
     }
+    printLogs();
   }
 
   function resolveEntryNumeric(fields: Record<string, any>): number | null {
@@ -1488,20 +1422,20 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
               registerLog(' Skipping custom simulation step: no valor_entrada available.');
               printLogs();
             }
-            const payload = {
-              if: 'bb',
-              status: 'success',
-              captured_at: new Date().toISOString(),
-              selected_tab: selectedTab,
-              result: results,
-            };
-            const sent = await sendResultsWithRetry(payload);
-            if (sent) {
-              hasSentResultsRef.current = true;
-              registerLog(` BB simulation results captured (${results.length} opções).`);
-              printLogs();
-              return;
+            const payload = new SimulationPayload('bb');
+            payload.addEntries(results);
+            const sendResult = await BankMessenger.sendSimulationPayload(payload, {
+              logPrefix: 'bbNavigation.js',
+              registerLog,
+              printLogs,
+            });
+            hasSentResultsRef.current = true;
+            registerLog(` BB simulation results captured (${results.length} opções).`);
+            if (!sendResult.confirmed) {
+              registerLog(` Confirmação do background não recebida para o BB (requestId=${sendResult.requestId}).`);
             }
+            printLogs();
+            return;
           } else {
             registerLog(` Suggestion tab "${selectedTab}" did not yield cards yet. Retrying...`);
             printLogs();
@@ -1529,6 +1463,8 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
     }
 
     registerLog(' useEffect triggered for BB automation.');
+
+    let lastFailureMessage: string | null = null;
 
     const runAutomation = async (): Promise<boolean> => {
       try {
@@ -1574,26 +1510,30 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
         const detalhe = mensagem || 'Não foi possível concluir a automação do Banco do Brasil.';
         registerLog(` Falha na automação do BB: ${detalhe}`);
         printLogs();
-        await sendFailureResult(detalhe);
+        lastFailureMessage = detalhe;
         return false;
       }
     };
 
     (async () => {
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        registerLog(` Executando tentativa ${attempt}/2 da automação do BB`);
+      for (let attempt = 1; attempt <= MAX_AUTOMATION_ATTEMPTS; attempt++) {
+        registerLog(` Executando tentativa ${attempt}/${MAX_AUTOMATION_ATTEMPTS} da automação do BB`);
         const concluido = await runAutomation();
         if (concluido) {
           registerLog(` Automação do BB finalizada na tentativa ${attempt}`);
           break;
         }
-        if (attempt < 2 && !hasSentResultsRef.current) {
+        if (attempt < MAX_AUTOMATION_ATTEMPTS && !hasSentResultsRef.current) {
           await delay(1500);
           registerLog(' Aguardando para tentar novamente a automação do BB...');
         } else {
           registerLog(' Automação do BB não obteve êxito após as tentativas configuradas.');
           break;
         }
+      }
+
+      if (!hasSentResultsRef.current && lastFailureMessage) {
+        await sendFailureResult(lastFailureMessage);
       }
     })();
 
@@ -1738,30 +1678,9 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
 
 registerLog('[bbNavigation.js] Script loaded. Starting auto-mount...');
 
-(function () {
-  async function main() {
-    try {
-      const data = (window as any).__CAIXA_AUTO_MOUNT_DATA;
-      if (data) {
-        registerLog('[bbNavigation.js] Auto-mounting with pre-seeded data.');
-        printLogs();
-
-        const container = document.createElement('div');
-        container.id = 'bb-navigator-root';
-        document.body.appendChild(container);
-
-        const root = createRoot(container);
-        root.render(React.createElement(BBNavigator, { data }));
-
-      } else {
-        registerLog('[bbNavigation.js] No pre-seeded data found.');
-      }
-    } catch (e: any) {
-      console.error(`[bbNavigation.js] Auto-mount failed: ${e.message}`, e);
-      registerLog(`[bbNavigation.js] Auto-mount failed: ${e.message}`);
-      printLogs();
-    }
-  }
-
-  main();
-})();
+autoMountNavigator(BBNavigator, {
+  containerId: 'bb-navigator-root',
+  logPrefix: 'bbNavigation.js',
+  registerLog,
+  printLogs,
+});

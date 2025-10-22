@@ -32,6 +32,7 @@
         "App.*.js",
         "Validation.*.js",
         "logger.*.js",
+        "commonHelpers*.js",
         "caixaNavigation.js",
         "caixaNavigationSecondStep.js",
         "bbNavigation.js"

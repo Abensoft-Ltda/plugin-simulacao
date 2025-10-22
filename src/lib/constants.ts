@@ -1,0 +1,1 @@
+export const MAX_AUTOMATION_ATTEMPTS = 4;

@@ -3,6 +3,8 @@ import { SimulationOverlay } from './SimulationOverlay';
 import './App.css';
 import { SimulationPayload } from './lib/SimulationPayload';
 import { autoMountNavigator } from './lib/autoMountNavigator';
+import { BankMessenger } from './lib/BankMessenger';
+import { MAX_AUTOMATION_ATTEMPTS } from './lib/constants';
 
 let logs: string[] = [];
 
@@ -63,78 +65,18 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 		const payload = new SimulationPayload('caixa', 'failure');
 		payload.addEntry(buildFailureEntry(mensagem));
-		const enviado = await sendResultsWithRetry(payload);
+		const messengerResult = await BankMessenger.sendSimulationPayload(payload, {
+			logPrefix: 'caixaNavigationSecondStep.js',
+			registerLog,
+			printLogs,
+		});
 
-		if (enviado) {
-			hasSentResultsRef.current = true;
-			setIsComplete(true);
+		hasSentResultsRef.current = true;
+		setIsComplete(true);
+		if (!messengerResult.confirmed) {
+			registerLog(` Confirmação do background não recebida para a Caixa (requestId=${messengerResult.requestId}).`);
+			printLogs();
 		}
-	};
-
-	const sendResultsWithRetry = async (
-		payload: SimulationPayload,
-		retries = 3
-	): Promise<boolean> => {
-		const normalized = payload.toJSON();
-
-		for (let attempt = 1; attempt <= retries; attempt++) {
-			try {
-				registerLog(` Enviando resultado da Caixa ao background (tentativa ${attempt}/${retries})...`);
-				printLogs();
-
-				await new Promise<void>((resolve, reject) => {
-					let completed = false;
-
-					const responseHandler = (event: MessageEvent) => {
-						if (event.source !== window) return;
-						if (event.data.type === 'BACKGROUND_TO_CAIXA') {
-							window.removeEventListener('message', responseHandler);
-							completed = true;
-							resolve();
-						}
-					};
-
-					window.addEventListener('message', responseHandler);
-
-					window.postMessage({
-						type: 'CAIXA_TO_BACKGROUND',
-						payload: { action: "simulationResult", payload: normalized }
-					}, '*');
-
-					setTimeout(() => {
-						window.removeEventListener('message', responseHandler);
-						if (!completed) {
-							reject(new Error('Tempo de resposta esgotado ao enviar resultado da Caixa.'));
-						}
-					}, 5000);
-				});
-
-				registerLog(' Resultado da Caixa enviado com sucesso ao background.');
-				printLogs();
-				return true;
-			} catch (error: any) {
-				registerLog(` Falha ao enviar resultado na tentativa ${attempt}: ${error?.message || error}`);
-				printLogs();
-				if (attempt < retries) {
-					await new Promise(resolve => setTimeout(resolve, 1000));
-				} else {
-					registerLog(' Limite de tentativas de envio atingido para os resultados da Caixa.');
-					printLogs();
-					try {
-						const fallbackKey = 'caixa_simulation_result';
-						localStorage.setItem(fallbackKey, JSON.stringify(normalized));
-						registerLog(` Resultado armazenado localmente em "${fallbackKey}" como fallback.`);
-						printLogs();
-					} catch (storageError: any) {
-						registerLog(` Falha ao armazenar resultado localmente: ${storageError?.message || storageError}`);
-						printLogs();
-					}
-					return false;
-				}
-			}
-		}
-
-		return false;
 	};
 
 	registerLog(`[CaixaNavigatorSecondStep] Received data: ${JSON.stringify(data)}`);
@@ -146,34 +88,31 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 		try {
 			// Initial error check
-			if (checkForErrorDialog()) {
-				const mensagem = 'A página da Caixa apresentou um aviso de erro antes de iniciar a coleta.';
-				registerLog(` ${mensagem}`);
-				await sendFailureResult(mensagem);
-				return null;
-			}
+		if (checkForErrorDialog()) {
+			const mensagem = 'A página da Caixa apresentou um aviso de erro antes de iniciar a coleta.';
+			registerLog(` ${mensagem}`);
+			throw new Error(mensagem);
+		}
 
 			registerLog('Waiting 2 seconds for page to be fully loaded...');
 			await new Promise(resolve => setTimeout(resolve, 2000));
 
 			// Check for error dialog after page load
-			if (checkForErrorDialog()) {
-				const mensagem = 'A página da Caixa apresentou um aviso logo após o carregamento.';
-				registerLog(` ${mensagem}`);
-				await sendFailureResult(mensagem);
-				return null;
-			}
+		if (checkForErrorDialog()) {
+			const mensagem = 'A página da Caixa apresentou um aviso logo após o carregamento.';
+			registerLog(` ${mensagem}`);
+			throw new Error(mensagem);
+		}
 
 			const passo3 = document.querySelector('#passo3');
 			registerLog(` Found #passo3 element: ${!!passo3}`);
 
-			if (!passo3) {
-				const mensagem = 'A tela de opções da Caixa não carregou totalmente para continuar a simulação.';
-				console.error(mensagem);
-				registerLog(` ${mensagem}`);
-				await sendFailureResult(mensagem);
-				return null;
-			}
+		if (!passo3) {
+			const mensagem = 'A tela de opções da Caixa não carregou totalmente para continuar a simulação.';
+			console.error(mensagem);
+			registerLog(` ${mensagem}`);
+			throw new Error(mensagem);
+		}
 
 			registerLog(' Searching for financing option links...');
 
@@ -187,13 +126,12 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 				registerLog(` Link ${index + 1}: "${text}" - onclick: ${onclick?.substring(0, 100)}... hasClass: ${link.classList.contains('js-form-next')} tagName: ${link.tagName}`);
 			});
 
-			if (optionLinks.length === 0) {
-				const mensagem = 'Nenhuma opção de financiamento foi localizada na página da Caixa.';
-				console.error(mensagem);
-				registerLog(` ${mensagem}`);
-				await sendFailureResult(mensagem);
-				return null;
-			}
+		if (optionLinks.length === 0) {
+			const mensagem = 'Nenhuma opção de financiamento foi localizada na página da Caixa.';
+			console.error(mensagem);
+			registerLog(` ${mensagem}`);
+			throw new Error(mensagem);
+		}
 
 			const payload = new SimulationPayload('caixa');
 
@@ -209,12 +147,11 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 				registerLog(` ===== Processing option ${i + 1}/${optionLinks.length}: "${optionName}" =====`);
 
 				// Check for error dialog before processing each option
-				if (checkForErrorDialog()) {
-					const mensagem = 'A Caixa exibiu um aviso antes de coletar todas as opções.';
-					registerLog(` ${mensagem}`);
-					await sendFailureResult(mensagem);
-					return null;
-				}
+			if (checkForErrorDialog()) {
+				const mensagem = 'A Caixa exibiu um aviso antes de coletar todas as opções.';
+				registerLog(` ${mensagem}`);
+				throw new Error(mensagem);
+			}
 
 				try {
 					registerLog(` Executing JS destruction script...`);
@@ -278,12 +215,11 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					registerLog(` Click executed, waiting for response...`);
 					await new Promise(resolve => setTimeout(resolve, 2000));
 
-					if (checkForErrorDialog()) {
-						const mensagem = `A Caixa exibiu um erro ao abrir a opção "${optionName}".`;
-						registerLog(` ${mensagem}`);
-						await sendFailureResult(mensagem);
-						return null;
-					}
+				if (checkForErrorDialog()) {
+					const mensagem = `A Caixa exibiu um erro ao abrir a opção "${optionName}".`;
+					registerLog(` ${mensagem}`);
+					throw new Error(mensagem);
+				}
 
 					registerLog(` Analyzing page response...`);
 					const erroEls = Array.from(document.querySelectorAll('.erro_feedback'));
@@ -347,17 +283,24 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 				printLogs();
 			}
 
-			const enviado = await sendResultsWithRetry(payload);
-			hasSentResultsRef.current = enviado;
-			return payload.toJSON();
-
-		} catch (error: any) {
-			const mensagem = `Falha ao processar as opções da Caixa: ${error.message}`;
-			registerLog(` ${mensagem}`);
+		const messengerResult = await BankMessenger.sendSimulationPayload(payload, {
+			logPrefix: 'caixaNavigationSecondStep.js',
+			registerLog,
+			printLogs,
+		});
+		hasSentResultsRef.current = true;
+		if (!messengerResult.confirmed) {
+			registerLog(` Confirmação do background não recebida para a Caixa (requestId=${messengerResult.requestId}).`);
 			printLogs();
-			await sendFailureResult(mensagem);
-			return null;
 		}
+		return payload.toJSON();
+
+	} catch (error: any) {
+		const mensagem = `Falha ao processar as opções da Caixa: ${error.message}`;
+		registerLog(` ${mensagem}`);
+		printLogs();
+		throw new Error(mensagem);
+	}
 	}
 
 	// Back function for the ERROR page
@@ -521,6 +464,8 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 		registerLog('[CaixaNavigatorSecondStep] Second step component loaded for financing options processing');
 		printLogs();
 
+		let lastFailureMessage: string | null = null;
+
 		const runSecondStepAutomation = async () => {
 			(window as any).__CAIXA_SECOND_STEP_EXECUTED = true;
 
@@ -528,8 +473,8 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			printLogs();
 
 			let finalResult: any = null;
-			for (let attempt = 1; attempt <= 2; attempt++) {
-				registerLog(` processFinancingOptions attempt ${attempt}/2`);
+			for (let attempt = 1; attempt <= MAX_AUTOMATION_ATTEMPTS; attempt++) {
+				registerLog(` processFinancingOptions attempt ${attempt}/${MAX_AUTOMATION_ATTEMPTS}`);
 				try {
 					const optionsResult = await processFinancingOptions();
 					registerLog(` processFinancingOptions completed (attempt ${attempt})`);
@@ -540,11 +485,13 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 						registerLog(` processFinancingOptions returned no results on attempt ${attempt}`);
 					}
 				} catch (error: any) {
-					registerLog(` ERROR in processFinancingOptions() attempt ${attempt}: ${error?.message || error}`);
+					const detail = error instanceof Error ? error.message : String(error);
+					lastFailureMessage = detail;
+					registerLog(` ERROR in processFinancingOptions() attempt ${attempt}: ${detail}`);
 					printLogs();
 				}
 
-				if (attempt < 2) {
+				if (attempt < MAX_AUTOMATION_ATTEMPTS) {
 					registerLog(' Waiting before retry...');
 					await new Promise(resolve => setTimeout(resolve, 1500));
 				}
@@ -555,6 +502,9 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 				registerLog(`Financing Options Result: ${JSON.stringify(finalResult, null, 2)}`);
 			} else {
 				registerLog('All attempts failed to process financing options');
+				if (!hasSentResultsRef.current && lastFailureMessage) {
+					await sendFailureResult(lastFailureMessage);
+				}
 			}
 
 			setIsComplete(true);
