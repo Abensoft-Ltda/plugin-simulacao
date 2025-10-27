@@ -1669,8 +1669,7 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
       isComplete={isComplete}
     >
       <div className="bb-navigator">
-        <h2>Simulação do Banco do Brasil em andamento...</h2>
-        <p>Verifique os resultados no Superleme ao final da execução.</p>
+        <p>Simulação do Banco do Brasil em processo.</p>
       </div>
     </SimulationOverlay>
   );

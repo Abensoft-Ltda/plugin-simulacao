@@ -18,16 +18,32 @@ function printLogs() {
 	logs.forEach(msg => console.log(msg));
 }
 
+function closeParentDialog(node: Element | null): void {
+	if (!node) return;
+	const dialogContainer = node.closest(".ui-dialog") as HTMLElement | null;
+	const closeButton = dialogContainer?.querySelector(
+		".ui-dialog-titlebar-close"
+	) as HTMLButtonElement | null;
+
+	if (closeButton) {
+		closeButton.click();
+		registerLog(" Diálogo de erro fechado pelo botão de fechar do título.");
+	} else if (dialogContainer) {
+		dialogContainer.style.display = "none";
+		registerLog(" Ocultado contêiner do diálogo (botão de fechar não encontrado).");
+	}
+}
+
 function checkForErrorDialog(): boolean {
 	const errorDialog = document.querySelector('#ui-id-34.ui-dialog-content.ui-widget-content');
 
 	if (errorDialog) {
 		const errorText = errorDialog.textContent?.trim();
-		registerLog(`Found error dialog #ui-id-34 with text: "${errorText}"`);
+		registerLog(`Diálogo de erro #ui-id-34 encontrado com o texto: "${errorText}"`);
 
 		if (errorText?.includes('Campo obrigatório não informado')) {
-			registerLog('Error dialog contains "Campo obrigatório não informado" - refreshing page');
-			window.location.reload();
+			registerLog('Diálogo de erro contém "Campo obrigatório não informado" - fechando diálogo');
+			closeParentDialog(errorDialog);
 			return true;
 		}
 	}
@@ -36,8 +52,8 @@ function checkForErrorDialog(): boolean {
 	for (const dialog of allDialogs) {
 		const dialogText = dialog.textContent?.trim();
 		if (dialogText?.includes('Campo obrigatório não informado')) {
-			registerLog(`Found error dialog with class "${dialog.className}" containing error text - refreshing page`);
-			window.location.reload();
+			registerLog(`Diálogo de erro encontrado com a classe "${dialog.className}" contendo o texto de erro - fechando diálogo`);
+			closeParentDialog(dialog);
 			return true;
 		}
 	}
@@ -51,7 +67,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 	const hasSentResultsRef = React.useRef(false);
 	const sanitizeFailureMessage = (mensagem: string): string => {
 		const cleaned = (mensagem ?? '').toString().trim();
-		const normalized = cleaned.length > 0 ? cleaned : 'Erro não especificado';
+		const normalized = cleaned.length > 0 ? cleaned : 'Erro não especificado'; 
 		const prefix = 'caixa:';
 		return normalized.toLowerCase().startsWith(prefix) ? normalized : `${prefix} ${normalized}`;
 	};
@@ -74,30 +90,33 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 		hasSentResultsRef.current = true;
 		setIsComplete(true);
 		if (!messengerResult.confirmed) {
+			
 			registerLog(` Confirmação do background não recebida para a Caixa (requestId=${messengerResult.requestId}).`);
 			printLogs();
 		}
 	};
 
-	registerLog(`[CaixaNavigatorSecondStep] Received data: ${JSON.stringify(data)}`);
+	
+	registerLog(`[CaixaNavigatorSecondStep] Dados recebidos: ${JSON.stringify(data)}`);
 	const isCaixaPage = typeof window !== 'undefined' && /\.caixa\.gov\.br$/.test(window.location.hostname);
 
 	async function processFinancingOptions(): Promise<any> {
-		registerLog(` Current URL: ${window.location.href}`);
-		registerLog(` Page title: ${document.title}`);
+		
+		registerLog(` URL Atual: ${window.location.href}`);
+		registerLog(` Título da Página: ${document.title}`);
 
 		try {
-			// Initial error check
+			// Verificação inicial de erro
 		if (checkForErrorDialog()) {
 			const mensagem = 'A página da Caixa apresentou um aviso de erro antes de iniciar a coleta.';
 			registerLog(` ${mensagem}`);
 			throw new Error(mensagem);
 		}
-
-			registerLog('Waiting 2 seconds for page to be fully loaded...');
+			
+			registerLog('Aguardando 2 segundos para a página carregar totalmente...');
 			await new Promise(resolve => setTimeout(resolve, 2000));
 
-			// Check for error dialog after page load
+			// Verifica diálogo de erro após carregamento
 		if (checkForErrorDialog()) {
 			const mensagem = 'A página da Caixa apresentou um aviso logo após o carregamento.';
 			registerLog(` ${mensagem}`);
@@ -105,7 +124,8 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 		}
 
 			const passo3 = document.querySelector('#passo3');
-			registerLog(` Found #passo3 element: ${!!passo3}`);
+			
+			registerLog(` Elemento #passo3 encontrado: ${!!passo3}`);
 
 		if (!passo3) {
 			const mensagem = 'A tela de opções da Caixa não carregou totalmente para continuar a simulação.';
@@ -113,17 +133,19 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			registerLog(` ${mensagem}`);
 			throw new Error(mensagem);
 		}
-
-			registerLog(' Searching for financing option links...');
+			
+			registerLog(' Procurando por links de opções de financiamento...');
 
 			const optionLinks = document.querySelectorAll('a.js-form-next');
-			registerLog(` Found ${optionLinks.length} js-form-next links (no filtering applied)`);
+			
+			registerLog(` Encontrados ${optionLinks.length} links js-form-next (sem filtro aplicado)`);
 
 
 			Array.from(optionLinks).forEach((link, index) => {
 				const text = link.textContent?.trim();
 				const onclick = link.getAttribute('onclick');
-				registerLog(` Link ${index + 1}: "${text}" - onclick: ${onclick?.substring(0, 100)}... hasClass: ${link.classList.contains('js-form-next')} tagName: ${link.tagName}`);
+				
+				registerLog(` Link ${index + 1}: "${text}" - onclick: ${onclick?.substring(0, 100)}... temClasse: ${link.classList.contains('js-form-next')} tagName: ${link.tagName}`);
 			});
 
 		if (optionLinks.length === 0) {
@@ -137,16 +159,17 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 			for (let i = 0; i < optionLinks.length; i++) {
 				const link = optionLinks[i] as HTMLAnchorElement;
-				const optionName = link.textContent?.trim() || `Option ${i + 1}`;
+				const optionName = link.textContent?.trim() || `Opção ${i + 1}`;
 
 				if (optionName.toLowerCase().includes('clique aqui')) {
-					registerLog(` Skipping "clique aqui" link: "${optionName}"`);
+					
+					registerLog(` Pulando link "clique aqui": "${optionName}"`);
 					continue;
 				}
+				
+				registerLog(` ===== Processando opção ${i + 1}/${optionLinks.length}: "${optionName}" =====`);
 
-				registerLog(` ===== Processing option ${i + 1}/${optionLinks.length}: "${optionName}" =====`);
-
-				// Check for error dialog before processing each option
+				// Verifica diálogo de erro antes de processar cada opção
 			if (checkForErrorDialog()) {
 				const mensagem = 'A Caixa exibiu um aviso antes de coletar todas as opções.';
 				registerLog(` ${mensagem}`);
@@ -154,65 +177,74 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			}
 
 				try {
-					registerLog(` Executing JS destruction script...`);
+					
+					registerLog(` Executando script de destruição JS...`);
 					const jsDestroyScript = `
 						var elements = document.querySelectorAll('.erro_feedback');
-						var removedCount = 0;
+						var contadorRemovidos = 0; 
 						for (var i = 0; i < elements.length; i++) {
-							if (elements[i].textContent.includes('Habite Seguro')) {
+							if (elements[i].textContent.includes('Habite Seguro')) { // Lógica mantida
 								elements[i].remove();
-								removedCount++;
+								contadorRemovidos++;
 							}
 						}
-						return removedCount;
+						return contadorRemovidos;
 					`;
 
 					const numRemoved = (window as any).eval(`(function() { ${jsDestroyScript} })()`);
-					registerLog(` JS destruction removed ${numRemoved} unwanted error elements`);
-
-					registerLog(` Attempting to click link...`);
+					
+					registerLog(` Destruição JS removeu ${numRemoved} elementos de erro indesejados`);
+					
+					registerLog(` Tentando clicar no link...`);
 
 					let clickSuccess = false;
 
 					try {
 						link.click();
-						registerLog(` Direct click successful`);
+						
+						registerLog(` Clique direto bem-sucedido`);
 						printLogs();
 						clickSuccess = true;
 					} catch (error) {
-						registerLog(` Direct click failed: ${error}`);
+						
+						registerLog(` Clique direto falhou: ${error}`);
 					}
 
 					if (!clickSuccess) {
 						try {
 							const onclickAttr = link.getAttribute('onclick');
 							if (onclickAttr) {
-								registerLog(` Executing onclick directly: ${onclickAttr.substring(0, 100)}...`);
+								
+								registerLog(` Executando onclick diretamente: ${onclickAttr.substring(0, 100)}...`);
 								(window as any).eval(onclickAttr);
 								clickSuccess = true;
 							}
 						} catch (error) {
-							registerLog(` Onclick execution failed: ${error}`);
+							
+							registerLog(` Execução do Onclick falhou: ${error}`);
 						}
 					}
 
 					if (!clickSuccess) {
 						try {
-							registerLog(` Trying dispatched click event`);
+							
+							registerLog(` Tentando disparar evento de clique`);
 							const event = new MouseEvent('click', { bubbles: true, cancelable: true });
 							link.dispatchEvent(event);
 							clickSuccess = true;
 						} catch (error) {
-							registerLog(` Event dispatch failed: ${error}`);
+							
+							registerLog(` Disparo de evento falhou: ${error}`);
 						}
 					}
 
 					if (!clickSuccess) {
-						registerLog(` All click approaches failed for option "${optionName}"`);
+						
+						registerLog(` Todas as abordagens de clique falharam para a opção "${optionName}"`);
 						continue;
 					}
-
-					registerLog(` Click executed, waiting for response...`);
+					
+					registerLog(` Clique executado, aguardando resposta...`);
 					await new Promise(resolve => setTimeout(resolve, 2000));
 
 				if (checkForErrorDialog()) {
@@ -220,10 +252,11 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					registerLog(` ${mensagem}`);
 					throw new Error(mensagem);
 				}
-
-					registerLog(` Analyzing page response...`);
+					
+					registerLog(` Analisando resposta da página...`);
 					const erroEls = Array.from(document.querySelectorAll('.erro_feedback'));
-					registerLog(` Found ${erroEls.length} .erro_feedback elements`);
+					
+					registerLog(` Encontrados ${erroEls.length} elementos .erro_feedback`);
 
 					let errorFound = false;
 
@@ -236,11 +269,12 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 							const elementId = e.id?.toLowerCase() || '';
 							if (elementId.includes('divobservacao') || elementId.includes('divtextoexplicativo')) {
+								
 								registerLog(` Ignorando erro com ID informativo (${e.id}): ${txtRaw.substring(0, 200)}`);
 								continue;
 							}
-
-							registerLog(` Captured erro_feedback: ${txtRaw.substring(0, 400)}`);
+							
+							registerLog(` Capturado erro_feedback: ${txtRaw.substring(0, 400)}`);
 							payload.addEntry(buildFailureEntry(txtRaw));
 						}
 
@@ -249,21 +283,25 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 					if (!errorFound) {
 						if (erroEls.length > 0) {
+							
 							registerLog(` Nenhum erro relevante encontrado nas mensagens. Tentando extrair tabela de resultados.`);
 						} else {
-							registerLog(` No .erro_feedback found; attempting to extract result table`);
+							
+							registerLog(` Nenhum .erro_feedback encontrado; tentando extrair tabela de resultados`);
 						}
 						const tableData = await extractTableData(optionName);
 						if (tableData) {
-							registerLog(` Successfully extracted table data`);
+							
+							registerLog(` Dados da tabela extraídos com sucesso`);
 							printLogs();
 							payload.addEntry(tableData);
 						} else {
-							registerLog(` No table data found`);
+							
+							registerLog(` Nenhum dado de tabela encontrado`);
 						}
 					}
-
-					registerLog(` Going back to options page...`);
+					
+					registerLog(` Voltando para a página de opções...`);
 					printLogs();
 					if (errorFound) {
 						await goBackFromErrorPage();
@@ -272,13 +310,15 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					}
 
 				} catch (error: any) {
-					registerLog(` Error processing option "${optionName}": ${error.message}`);
+					
+					registerLog(` Erro ao processar opção "${optionName}": ${error.message}`);
 					printLogs();
 					await goBackFromErrorPage();
 				}
 			}
 
 			if (!payload.hasEntries()) {
+				
 				registerLog(' Nenhuma informação válida foi coletada nas opções da Caixa (resultado vazio).');
 				printLogs();
 			}
@@ -290,6 +330,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 		});
 		hasSentResultsRef.current = true;
 		if (!messengerResult.confirmed) {
+			
 			registerLog(` Confirmação do background não recebida para a Caixa (requestId=${messengerResult.requestId}).`);
 			printLogs();
 		}
@@ -303,57 +344,66 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 	}
 	}
 
-	// Back function for the ERROR page
+	// Função 'Voltar' para a página de ERRO
 	async function goBackFromErrorPage(): Promise<void> {
 		try {
 			const backButton = document.querySelector('button[onclick*="voltarTelaEnquadrar"]');
 			if (backButton) {
-				registerLog(` Clicking back button from ERROR page: button[onclick*="voltarTelaEnquadrar"]`);
+				
+				registerLog(` Clicando no botão voltar da página de ERRO: button[onclick*="voltarTelaEnquadrar"]`);
 				(backButton as HTMLElement).click();
-				await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to reload
+				await new Promise(resolve => setTimeout(resolve, 2000)); // Espera página recarregar
 			} else {
-				registerLog(` Could not find back button on error page.`);
+				
+				registerLog(` Não foi possível encontrar o botão voltar na página de erro.`);
 			}
 		} catch (error: any) {
-			registerLog(` Error going back from error page: ${error.message}`);
+			
+			registerLog(` Erro ao voltar da página de erro: ${error.message}`);
 		}
 	}
 
+	// Função 'Voltar' para a página de SUCESSO
 	async function goBackFromSuccessPage(): Promise<void> {
 		try {
 			const backButton = document.querySelector('#botaoVoltar');
 			if (backButton) {
-				registerLog(` Clicking back button from SUCCESS page: #botaoVoltar`);
+				
+				registerLog(` Clicando no botão voltar da página de SUCESSO: #botaoVoltar`);
 				(backButton as HTMLElement).click();
 				await new Promise(resolve => setTimeout(resolve, 2000));
 			} else {
-				registerLog(` Could not find back button on success page.`);
+				
+				registerLog(` Não foi possível encontrar o botão voltar na página de sucesso.`);
 			}
 		} catch (error: any) {
-			registerLog(` Error going back from success page: ${error.message}`);
+			
+			registerLog(` Erro ao voltar da página de sucesso: ${error.message}`);
 		}
 	}
 
-	// Extract data from results table
+	// Extrai dados da tabela de resultados
 	async function extractTableData(optionName: string): Promise<any | null> {
 		try {
-			// Look for the results table
-			registerLog(` Looking for table.simple-table...`);
+			// Procura pela tabela de resultados
+			
+			registerLog(` Procurando por table.simple-table...`);
 			const table = document.querySelector('table.simple-table');
 
 			if (!table) {
-				registerLog(` No table.simple-table found, checking for other table types...`);
+				
+				registerLog(` Nenhuma table.simple-table encontrada, verificando outros tipos de tabela...`);
 				const allTables = document.querySelectorAll('table');
-				registerLog(` Found ${allTables.length} tables total`);
+				registerLog(` Encontradas ${allTables.length} tabelas no total`);
 				allTables.forEach((t, i) => {
-					registerLog(` Table ${i + 1}: class="${t.className}" rows=${t.querySelectorAll('tr').length}`);
+					registerLog(` Tabela ${i + 1}: class="${t.className}" linhas=${t.querySelectorAll('tr').length}`);
 				});
 				return null;
 			}
+			
+			registerLog(` Tabela de resultados encontrada para a opção "${optionName}" com ${table.querySelectorAll('tr').length} linhas`);
 
-			registerLog(` Found results table for option "${optionName}" with ${table.querySelectorAll('tr').length} rows`);
-
-			// Extract table data
+			// Extrai dados da tabela
 			const rows = table.querySelectorAll('tr');
 			const tableData: any = {
 				tipo_amortizacao: optionName,
@@ -372,33 +422,38 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 					const centerTag = valueCell.querySelector('center');
 					const value = (centerTag?.textContent?.trim() || valueCell.textContent?.trim() || '').replace(/\s+/g, ' ');
-
-					registerLog(` Row ${rowIndex + 1}: "${key}" = "${value}"`);
+					
+					registerLog(` Linha ${rowIndex + 1}: "${key}" = "${value}"`);
 
 					if (key && value) {
 
 						if (key.includes('amortiza')) {
 							tableData.tipo_amortizacao = `${value} ${optionName}`.trim();
-							registerLog(` Mapped tipo_amortizacao: ${tableData.tipo_amortizacao}`);
+							
+							registerLog(` Mapeado tipo_amortizacao: ${tableData.tipo_amortizacao}`);
 						} else if (key.includes('prazo') && key.includes('escolhido')) {
 							tableData.prazo = value;
-							registerLog(` Mapped prazo: ${tableData.prazo}`);
+							
+							registerLog(` Mapeado prazo: ${tableData.prazo}`);
 						} else if (key.includes('financiamento') && key.includes('valor')) {
 							tableData.valor_total = value;
-							registerLog(` Mapped valor_total: ${tableData.valor_total}`);
+							
+							registerLog(` Mapeado valor_total: ${tableData.valor_total}`);
 						} else if (key.includes('entrada') && key.includes('valor')) {
 							tableData.valor_entrada = value;
-							registerLog(` Mapped valor_entrada: ${tableData.valor_entrada}`);
+							
+							registerLog(` Mapeado valor_entrada: ${tableData.valor_entrada}`);
 						}
 					}
 				}
 			});
 
-			// Extract interest rates using the same XPath selector as Python
+			// Extrai taxas de juros usando o mesmo seletor XPath do Python
 			try {
-				registerLog(` Looking for interest rates using XPath...`);
+				
+				registerLog(` Procurando por taxas de juros usando XPath...`);
 
-				// Use XPath to find juros nominais - same as Python code
+				// Usa XPath para encontrar juros nominais - igual ao código Python
 				const jurosNominaisXPath = "//td[contains(., 'Juros Nominais')]/following-sibling::td/center";
 				const jurosNominaisResult = document.evaluate(
 					jurosNominaisXPath,
@@ -410,12 +465,14 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 				if (jurosNominaisResult.singleNodeValue) {
 					tableData.juros_nominais = jurosNominaisResult.singleNodeValue.textContent?.trim();
-					registerLog(` Found juros nominais: ${tableData.juros_nominais}`);
+					
+					registerLog(` Encontrados juros nominais: ${tableData.juros_nominais}`);
 				} else {
-					registerLog(` Could not find juros nominais`);
+					
+					registerLog(` Não foi possível encontrar juros nominais`);
 				}
 
-				// Use XPath to find juros efetivos - same as Python code
+				// Usa XPath para encontrar juros efetivos - igual ao código Python
 				const jurosEfetivosXPath = "//td[contains(., 'Juros Efetivos')]/following-sibling::td/center";
 				const jurosEfetivosResult = document.evaluate(
 					jurosEfetivosXPath,
@@ -427,98 +484,110 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 				if (jurosEfetivosResult.singleNodeValue) {
 					tableData.juros_efetivos = jurosEfetivosResult.singleNodeValue.textContent?.trim();
-					registerLog(` Found juros efetivos: ${tableData.juros_efetivos}`);
+					
+					registerLog(` Encontrados juros efetivos: ${tableData.juros_efetivos}`);
 				} else {
-					registerLog(` Could not find juros efetivos`);
+					
+					registerLog(` Não foi possível encontrar juros efetivos`);
 				}
 
 			} catch (error) {
-				registerLog(` Could not extract interest rates: ${error}`);
+				
+				registerLog(` Não foi possível extrair taxas de juros: ${error}`);
 			}
-
-			registerLog(` Final table data: ${JSON.stringify(tableData)}`);
+			
+			registerLog(` Dados finais da tabela: ${JSON.stringify(tableData)}`);
 			return SimulationPayload.ensureEntry(tableData, 'caixa');
 
 		} catch (error: any) {
-			registerLog(` Error extracting table data: ${error.message}`);
+			
+			registerLog(` Erro ao extrair dados da tabela: ${error.message}`);
 			return null;
 		}
 	}
 
 	React.useEffect(() => {
 		if (!isCaixaPage) {
-			registerLog('[CaixaNavigatorSecondStep] Not on caixa.gov.br, skipping automation');
+			
+			registerLog('[CaixaNavigatorSecondStep] Não está em caixa.gov.br, pulando automação');
 			return;
 		}
 
 		if ((window as any).__CAIXA_SECOND_STEP_EXECUTED) {
-			registerLog('[CaixaNavigatorSecondStep] Automation already executed, skipping');
+			
+			registerLog('[CaixaNavigatorSecondStep] Automação já executada, pulando');
 			return;
 		}
-
 
 		const errorCheckInterval = setInterval(() => {
 			checkForErrorDialog();
 		}, 1000);
-
-		registerLog('[CaixaNavigatorSecondStep] Second step component loaded for financing options processing');
+		
+		registerLog('[CaixaNavigatorSecondStep] Componente da segunda etapa carregado para processamento das opções de financiamento');
 		printLogs();
 
 		let lastFailureMessage: string | null = null;
 
 		const runSecondStepAutomation = async () => {
 			(window as any).__CAIXA_SECOND_STEP_EXECUTED = true;
-
-			registerLog('About to call processFinancingOptions()...');
+			
+			registerLog('Prestes a chamar processFinancingOptions()...');
 			printLogs();
 
 			let finalResult: any = null;
 			for (let attempt = 1; attempt <= MAX_AUTOMATION_ATTEMPTS; attempt++) {
-				registerLog(` processFinancingOptions attempt ${attempt}/${MAX_AUTOMATION_ATTEMPTS}`);
+				
+				registerLog(` processFinancingOptions tentativa ${attempt}/${MAX_AUTOMATION_ATTEMPTS}`);
 				try {
 					const optionsResult = await processFinancingOptions();
-					registerLog(` processFinancingOptions completed (attempt ${attempt})`);
+					
+					registerLog(` processFinancingOptions concluído (tentativa ${attempt})`);
 					if (optionsResult) {
 						finalResult = optionsResult;
 						break;
 					} else {
-						registerLog(` processFinancingOptions returned no results on attempt ${attempt}`);
+						
+						registerLog(` processFinancingOptions não retornou resultados na tentativa ${attempt}`);
 					}
 				} catch (error: any) {
 					const detail = error instanceof Error ? error.message : String(error);
 					lastFailureMessage = detail;
-					registerLog(` ERROR in processFinancingOptions() attempt ${attempt}: ${detail}`);
+					
+					registerLog(` ERRO em processFinancingOptions() tentativa ${attempt}: ${detail}`);
 					printLogs();
 				}
 
 				if (attempt < MAX_AUTOMATION_ATTEMPTS) {
-					registerLog(' Waiting before retry...');
+					
+					registerLog(' Aguardando antes de tentar novamente...');
 					await new Promise(resolve => setTimeout(resolve, 1500));
 				}
 			}
 
 			if (finalResult) {
-				registerLog(`Successfully processed ${finalResult.result?.length || 0} financing options`);
-				registerLog(`Financing Options Result: ${JSON.stringify(finalResult, null, 2)}`);
+				
+				registerLog(`Processado com sucesso ${finalResult.result?.length || 0} opções de financiamento`);
+				registerLog(`Resultado das Opções de Financiamento: ${JSON.stringify(finalResult, null, 2)}`);
 			} else {
-				registerLog('All attempts failed to process financing options');
+				
+				registerLog('Todas as tentativas de processar as opções de financiamento falharam');
 				if (!hasSentResultsRef.current && lastFailureMessage) {
 					await sendFailureResult(lastFailureMessage);
 				}
 			}
 
 			setIsComplete(true);
-
-			registerLog(' Second step automation sequence completed.');
+			
+			registerLog(' Sequência de automação da segunda etapa concluída.');
 			printLogs();
 		}
 
-		// Add a small delay to ensure page is fully loaded
+		// Adiciona um pequeno atraso para garantir que a página está totalmente carregada
 		setTimeout(() => {
 			runSecondStepAutomation();
 		}, 1000);
 
-		// Cleanup interval on unmount
+		// Limpa o intervalo ao desmontar
 		return () => {
 			clearInterval(errorCheckInterval);
 		};
@@ -534,15 +603,14 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			isComplete={isComplete}
 		>
 			<div className="caixa-navigator">
-				<h2>Caixa Second Step Automation Running...</h2>
-				<p>Processing financing options...</p>
+				<p>Simulação da Caixa em processo.</p>
 			</div>
 		</SimulationOverlay>
 	);
 };
 
 
-registerLog('[caixaNavigationSecondStep.js] Script loaded. Starting auto-mount...');
+registerLog('[caixaNavigationSecondStep.js] Script carregado. Iniciando auto-mount...');
 
 autoMountNavigator(CaixaNavigatorSecondStep, {
 	containerId: 'caixa-navigator-second-step-root',
