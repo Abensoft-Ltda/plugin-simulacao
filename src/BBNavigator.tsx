@@ -1662,7 +1662,7 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
 
   return (
     <SimulationOverlay
-      title="Simulação Banco do Brasil"
+      title="Processando opções e obtendo resultados"
       subtitle="Preenchendo formulário automaticamente"
       bankName="Banco do Brasil"
       bankIcon="ibb-banco-brasil"
