@@ -74,6 +74,8 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
   const fields = data.fields;
   registerLog(` Using fields: ${JSON.stringify(fields)}`);
   const [isComplete, setIsComplete] = React.useState(false);
+  const [isFailure, setIsFailure] = React.useState(false);
+  const [failureMessage, setFailureMessage] = React.useState<string | null>(null);
 
   function waitForElement(selector: string, timeout = 10000): Promise<Element | null> {
     return new Promise((resolve) => {
@@ -1098,6 +1100,8 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
     };
 
     const mensagemFinal = normalizeFailure(message);
+    setIsFailure(true);
+    setFailureMessage(mensagemFinal);
     const payload = new SimulationPayload('bb', 'failure');
     payload.addFailure(mensagemFinal);
 
@@ -1430,6 +1434,8 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
               printLogs,
             });
             hasSentResultsRef.current = true;
+            setIsFailure(false);
+            setFailureMessage(null);
             registerLog(` BB simulation results captured (${results.length} opções).`);
             if (!sendResult.confirmed) {
               registerLog(` Confirmação do background não recebida para o BB (requestId=${sendResult.requestId}).`);
@@ -1532,8 +1538,9 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
         }
       }
 
-      if (!hasSentResultsRef.current && lastFailureMessage) {
-        await sendFailureResult(lastFailureMessage);
+      if (!hasSentResultsRef.current) {
+        const finalMessage = lastFailureMessage ?? 'O Banco do Brasil não retornou resultados durante a automação.';
+        await sendFailureResult(finalMessage);
       }
     })();
 
@@ -1667,6 +1674,8 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
       bankName="Banco do Brasil"
       bankIcon="ibb-banco-brasil"
       isComplete={isComplete}
+      isFailure={isFailure}
+      failureMessage={failureMessage ?? undefined}
     >
       <div className="bb-navigator">
         <p>Simulação do Banco do Brasil em processo.</p>

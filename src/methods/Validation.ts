@@ -102,7 +102,17 @@ export class BBFields extends BaseFieldsBuilder {
      * BB não possui regras de validação específicas.
      */
     protected runSpecificValidations(): void {
-        // No specific validations for BB
+        const tipoImovel = this.fields["tipo_imovel"];
+        if (typeof tipoImovel === "string") {
+            const normalizedTipo = tipoImovel
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .trim();
+            if (normalizedTipo === "imoveis caixa") {
+                this.errors.push('O Banco do Brasil não suporta a opção de financiamento "Imóveis Caixa".');
+            }
+        }
     }
 
     /**

@@ -85,6 +85,7 @@ const CAPITALIZATION_MAP: Record<string, string> = {
     "aquisicao de imovel na planta": "Aquisição de Imóvel na Planta",
     "aquisicao de imovel novo": "Aquisição de Imóvel Novo",
     "aquisicao de imovel usado": "Aquisição de Imóvel Usado",
+    "imoveis caixa": "Imóveis Caixa",
     "aquisicao de terreno": "Aquisição de Terreno",
     "aquisicao de terreno e construcao": "Aquisição de Terreno e Construção",
     "construcao em terreno proprio": "Construção em Terreno Próprio",

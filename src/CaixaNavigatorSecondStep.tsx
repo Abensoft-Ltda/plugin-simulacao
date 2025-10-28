@@ -64,6 +64,8 @@ function checkForErrorDialog(): boolean {
 export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> = ({ data }) => {
 
 	const [isComplete, setIsComplete] = React.useState(false);
+	const [isFailure, setIsFailure] = React.useState(false);
+	const [failureMessage, setFailureMessage] = React.useState<string | null>(null);
 	const hasSentResultsRef = React.useRef(false);
 	const sanitizeFailureMessage = (mensagem: string): string => {
 		const cleaned = (mensagem ?? '').toString().trim();
@@ -79,8 +81,11 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			return;
 		}
 
+		const normalizedMessage = sanitizeFailureMessage(mensagem);
 		const payload = new SimulationPayload('caixa', 'failure');
 		payload.addEntry(buildFailureEntry(mensagem));
+		setIsFailure(true);
+		setFailureMessage(normalizedMessage);
 		const messengerResult = await BankMessenger.sendSimulationPayload(payload, {
 			logPrefix: 'caixaNavigationSecondStep.js',
 			registerLog,
@@ -565,14 +570,16 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			}
 
 			if (finalResult) {
-				
+				setIsFailure(false);
+				setFailureMessage(null);
 				registerLog(`Processado com sucesso ${finalResult.result?.length || 0} opções de financiamento`);
 				registerLog(`Resultado das Opções de Financiamento: ${JSON.stringify(finalResult, null, 2)}`);
 			} else {
 				
 				registerLog('Todas as tentativas de processar as opções de financiamento falharam');
-				if (!hasSentResultsRef.current && lastFailureMessage) {
-					await sendFailureResult(lastFailureMessage);
+				if (!hasSentResultsRef.current) {
+					const fallbackMessage = lastFailureMessage ?? 'Não foi possível concluir a simulação da Caixa.';
+					await sendFailureResult(fallbackMessage);
 				}
 			}
 
@@ -601,6 +608,8 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			bankName="Caixa Econômica Federal"
 			bankIcon="ibb-caixa"
 			isComplete={isComplete}
+			isFailure={isFailure}
+			failureMessage={failureMessage ?? undefined}
 		>
 			<div className="caixa-navigator">
 				<p>Simulação da Caixa em processo.</p>
