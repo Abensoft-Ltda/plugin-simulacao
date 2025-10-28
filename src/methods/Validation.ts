@@ -1,5 +1,5 @@
 import { fakerBr } from '@js-brasil/fakerbr';
-import { BaseFieldsBuilder, type FieldsResult, type SimulationInput } from './BaseFieldsBuilder';
+import { BaseFieldsBuilder, type FieldsResult } from './BaseFieldsBuilder'; 
 
 // --- Subclasses especializadas ---
 
@@ -23,7 +23,10 @@ export class CaixaFields extends BaseFieldsBuilder {
      * Executa regras de validação específicas da Caixa.
      */
     protected runSpecificValidations(): void {
-        if (String(this.fields["tipo_imovel"]).includes("reforma")) {
+        // Valida contra o 'tipo_imovel' original, normalizado, de 'targetData'
+        const normalizedTipoImovel = String(this.targetData.tipo_imovel).toLowerCase();
+        
+        if (normalizedTipoImovel.includes("reforma")) {
             if (!this.fields["valor_reforma"] || !this.fields["possui_financiamento_habitacional"]) {
                 this.errors.push(
                     "'valor_reforma' e 'possui_financiamento_habitacional' são necessários para a opção de financiamento de reforma."
@@ -36,15 +39,15 @@ export class CaixaFields extends BaseFieldsBuilder {
 
         if (
             String(this.fields["portabilidade_credito"]).includes("sim") &&
-            !String(this.fields["tipo_imovel"]).includes("usado") &&
-            !String(this.fields["tipo_imovel"]).includes("emprestimo")
+            !normalizedTipoImovel.includes("usado") &&
+            !normalizedTipoImovel.includes("emprestimo")
         ) {
             this.errors.push(
                 "Para portabilidade, as opções permitidas são 'Aquisição de imóvel usado' or 'Empréstimo Garantido por Imóvel'."
             );
         }
 
-        if (String(this.fields["tipo_imovel"]).includes("construcao")) {
+        if (normalizedTipoImovel.includes("construcao")) {
             if (this.fields["lote_alienado_hipotecado"] === undefined) {
                 this.errors.push(
                     "A chave 'lote_alienado_hipotecado' é obrigatória para a opção de financiamento de construção."

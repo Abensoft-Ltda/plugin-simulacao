@@ -663,24 +663,24 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({
             registerLog(` Botão radio de tipo de pessoa não encontrado: ${selector}`);
         }
 
-        if (fields.tipo_imovel) {
-            registerLog(` Preenchendo #tipoImovel com categoria: ${fields.tipo_imovel}`);
+        if (fields.categoria) {
+            registerLog(` Preenchendo #tipoImovel com categoria: ${fields.categoria}`);
             await simulateNaturalInput(
                 "#tipoImovel",
-                capitalizeWords(fields.tipo_imovel)
+                capitalizeWords(fields.categoria)
             );
         }
+        // Apesar dos nomes dos campos, o TipoImovel acima é preenchido com fields.categoria
 
         registerLog(" Aguardando #grupoTipoFinanciamento ficar habilitado...");
         await waitForElementEnabled("#grupoTipoFinanciamento_input");
-
-        if (fields.categoria_imovel) {
+        if (fields.tipo_imovel) {
             registerLog(
-                ` Preenchendo #grupoTipoFinanciamento com tipo específico: ${fields.categoria_imovel}`
+                ` Preenchendo #grupoTipoFinanciamento com tipo específico: ${fields.tipo_imovel}`
             );
             await simulateNaturalInput(
                 "#grupoTipoFinanciamento_input",
-                capitalizeWords(fields.categoria_imovel)
+                capitalizeWords(fields.tipo_imovel)
             );
         }
 

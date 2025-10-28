@@ -24,13 +24,14 @@
   },
   "web_accessible_resources": [
     {
-      "resources": [
+        "resources": [
         "assets/*.js",
         "assets/*.css",
         "*.js",
         "*.css",
         "App.*.js",
         "Validation.*.js",
+        "BaseFieldsBuilder.*.js",
         "logger.*.js",
         "commonHelpers*.js",
         "caixaNavigation.js",

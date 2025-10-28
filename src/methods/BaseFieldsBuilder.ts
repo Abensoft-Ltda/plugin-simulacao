@@ -78,13 +78,9 @@ const REQUIRED_FIELDS = [
     "cidade",
 ];
 
-const VALID_IMOVEL_TYPES: Record<string, string> = {
-    "aquisicao de imovel na planta": "residencial", "aquisicao de imovel novo": "residencial",
-    "aquisicao de imovel usado": "residencial", "aquisicao de terreno": "residencial",
-    "aquisicao de terreno e construcao": "residencial", "construcao em terreno proprio": "residencial",
-    "aquisicao de sala comercial": "comercial", "aquisicao de terreno comercial": "comercial"
-};
+// REMOVIDO: O mapa 'VALID_IMOVEL_TYPES' estava incorreto e foi removido.
 
+// Este é o único mapa de autoridade: normalizado -> capitalizado
 const CAPITALIZATION_MAP: Record<string, string> = {
     "aquisicao de imovel na planta": "Aquisição de Imóvel na Planta",
     "aquisicao de imovel novo": "Aquisição de Imóvel Novo",
@@ -194,6 +190,7 @@ export abstract class BaseFieldsBuilder {
             status: this.targetData.status,
             valor_entrada: this.targetData.valor_entrada,
             tipo_imovel: this.targetData.tipo_imovel,
+            categoria: this.targetData.categoria, 
             opcao_financiamento: this.targetData.opcao_financiamento,
             valor_imovel: this.targetData.valor_imovel,
             valor_reforma: this.targetData.valor_reforma,
@@ -292,15 +289,23 @@ export abstract class BaseFieldsBuilder {
     }
 
     /**
-     * Valida `tipo_imovel` contra o mapa permitido e define a `categoria` correspondente.
+     * Valida `tipo_imovel` e `categoria` contra os mapas de autoridade.
+     * Converte `tipo_imovel` para a string capitalizada final.
      */
     protected validateAndSetPropertyType(): void {
-        const tipoImovel = this.fields["tipo_imovel"];
-        if (tipoImovel in VALID_IMOVEL_TYPES) {
-            this.fields["categoria"] = this.targetData.categoria ?? this.fields["categoria"] ?? CAPITALIZATION_MAP[tipoImovel] ?? tipoImovel;
-            this.fields["tipo_imovel"] = VALID_IMOVEL_TYPES[tipoImovel];
+        // 'tipo_imovel' já foi normalizado (lowercase, unidecode)
+        const normalizedTipoImovel = this.fields["tipo_imovel"]; 
+
+        // A 'categoria' também foi normalizada (lowercase)
+        // e é confiada como vinda do servidor.
+
+        if (normalizedTipoImovel in CAPITALIZATION_MAP) {
+            this.fields["tipo_imovel"] = CAPITALIZATION_MAP[normalizedTipoImovel];
+            
+            // O campo 'categoria' (ex: "residencial" ou "comercial")
+            // é simplesmente passado adiante, como veio do servidor.
         } else {
-            this.errors.push(`Tipo de imóvel inválido: ${this.fields["tipo_imovel"]}`);
+            this.errors.push(`Tipo de imóvel inválido ou desconhecido: ${normalizedTipoImovel}`);
         }
     }
 }
