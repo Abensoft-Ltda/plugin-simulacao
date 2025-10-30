@@ -67,23 +67,88 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 	const [isFailure, setIsFailure] = React.useState(false);
 	const [failureMessage, setFailureMessage] = React.useState<string | null>(null);
 	const hasSentResultsRef = React.useRef(false);
-	const sanitizeFailureMessage = (mensagem: string): string => {
-		const cleaned = (mensagem ?? '').toString().trim();
-		const normalized = cleaned.length > 0 ? cleaned : 'Erro não especificado'; 
-		const prefix = 'caixa:';
-		return normalized.toLowerCase().startsWith(prefix) ? normalized : `${prefix} ${normalized}`;
+	const lastFailureContextRef = React.useRef<string | null>(null);
+	const defaultFailureMessage = 'Erro não especificado';
+	const ensureFailureMessage = (mensagem: unknown): string => {
+		if (mensagem === undefined || mensagem === null) {
+			return defaultFailureMessage;
+		}
+		const message = typeof mensagem === 'string' ? mensagem : String(mensagem);
+		return message.length > 0 ? message : defaultFailureMessage;
 	};
 
-	const buildFailureEntry = (mensagem: string) => SimulationPayload.ensureEntry({ tipo_amortizacao: sanitizeFailureMessage(mensagem) }, 'caixa');
+	const automationGuardId = React.useMemo(() => {
+		const fields = (data as any)?.fields as Record<string, any> | undefined;
+		const candidates = [
+			(data as any)?.startTime,
+			fields?.startTime,
+			fields?.id,
+			fields?.simulacao_id,
+			fields?.simId,
+		];
+		for (const value of candidates) {
+			if (value === undefined || value === null) continue;
+			const text = String(value).trim();
+			if (text.length > 0) {
+				return text;
+			}
+		}
+		return 'default';
+	}, [data]);
 
-	const sendFailureResult = async (mensagem: string) => {
+	const automationGuardKey = React.useMemo(
+		() => `__CAIXA_SECOND_STEP_GUARD_${automationGuardId}`,
+		[automationGuardId]
+	);
+
+	const readAutomationGuard = React.useCallback((): string | null => {
+		if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') {
+			return null;
+		}
+		try {
+			return window.sessionStorage.getItem(automationGuardKey);
+		} catch {
+			return null;
+		}
+	}, [automationGuardKey]);
+
+	const writeAutomationGuard = React.useCallback((status: 'running' | 'completed') => {
+		if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') {
+			return;
+		}
+		try {
+			window.sessionStorage.setItem(automationGuardKey, status);
+		} catch {
+			// ignore storage quota issues so the automation can carry on
+		}
+	}, [automationGuardKey]);
+
+	const formatFailureMessageWithContext = (mensagem: string, contexto?: string | null): string => {
+		const normalized = ensureFailureMessage(mensagem);
+		const trimmedContext = (contexto ?? '').toString().trim();
+		if (!trimmedContext) {
+			return normalized;
+		}
+		return `${normalized} (opção: ${trimmedContext})`;
+	};
+
+	const buildFailureEntry = (mensagem: string, contexto?: string) => {
+		const trimmedContext = contexto?.toString().trim();
+		if (trimmedContext) {
+			lastFailureContextRef.current = trimmedContext;
+		}
+		return SimulationPayload.ensureEntry({ tipo_amortizacao: formatFailureMessageWithContext(mensagem, trimmedContext) }, 'caixa');
+	};
+
+	const sendFailureResult = async (mensagem: string, contexto?: string) => {
 		if (hasSentResultsRef.current) {
 			return;
 		}
 
-		const normalizedMessage = sanitizeFailureMessage(mensagem);
+		const effectiveContext = (contexto ?? lastFailureContextRef.current) ?? undefined;
+		const normalizedMessage = formatFailureMessageWithContext(mensagem, effectiveContext);
 		const payload = new SimulationPayload('caixa', 'failure');
-		payload.addEntry(buildFailureEntry(mensagem));
+		payload.addEntry(buildFailureEntry(mensagem, effectiveContext));
 		setIsFailure(true);
 		setFailureMessage(normalizedMessage);
 		const messengerResult = await BankMessenger.sendSimulationPayload(payload, {
@@ -94,6 +159,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 		hasSentResultsRef.current = true;
 		setIsComplete(true);
+		writeAutomationGuard('completed');
 		if (!messengerResult.confirmed) {
 			
 			registerLog(` Confirmação do background não recebida para a Caixa (requestId=${messengerResult.requestId}).`);
@@ -165,6 +231,9 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			for (let i = 0; i < optionLinks.length; i++) {
 				const link = optionLinks[i] as HTMLAnchorElement;
 				const optionName = link.textContent?.trim() || `Opção ${i + 1}`;
+				if (optionName) {
+					lastFailureContextRef.current = optionName;
+				}
 
 				if (optionName.toLowerCase().includes('clique aqui')) {
 					
@@ -280,7 +349,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 							}
 							
 							registerLog(` Capturado erro_feedback: ${txtRaw.substring(0, 400)}`);
-							payload.addEntry(buildFailureEntry(txtRaw));
+							payload.addEntry(buildFailureEntry(txtRaw, optionName));
 						}
 
 						errorFound = payload.entryCount() > previousCount;
@@ -318,6 +387,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					
 					registerLog(` Erro ao processar opção "${optionName}": ${error.message}`);
 					printLogs();
+					payload.addEntry(buildFailureEntry(error.message, optionName));
 					await goBackFromErrorPage();
 				}
 			}
@@ -334,6 +404,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			printLogs,
 		});
 		hasSentResultsRef.current = true;
+		writeAutomationGuard('completed');
 		if (!messengerResult.confirmed) {
 			
 			registerLog(` Confirmação do background não recebida para a Caixa (requestId=${messengerResult.requestId}).`);
@@ -518,11 +589,26 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			return;
 		}
 
+		const guardStatus = readAutomationGuard();
+		if (guardStatus === 'completed') {
+			registerLog('[CaixaNavigatorSecondStep] Automação já marcada como concluída nesta aba. Pulando reexecução.');
+			setIsComplete(true);
+			printLogs();
+			return;
+		}
+		if (guardStatus === 'running') {
+			registerLog('[CaixaNavigatorSecondStep] Automação já está em andamento segundo sessionStorage. Evitando nova execução.');
+			printLogs();
+			return;
+		}
+
 		if ((window as any).__CAIXA_SECOND_STEP_EXECUTED) {
 			
 			registerLog('[CaixaNavigatorSecondStep] Automação já executada, pulando');
 			return;
 		}
+
+		writeAutomationGuard('running');
 
 		const errorCheckInterval = setInterval(() => {
 			checkForErrorDialog();
@@ -579,11 +665,12 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 				registerLog('Todas as tentativas de processar as opções de financiamento falharam');
 				if (!hasSentResultsRef.current) {
 					const fallbackMessage = lastFailureMessage ?? 'Não foi possível concluir a simulação da Caixa.';
-					await sendFailureResult(fallbackMessage);
+					await sendFailureResult(fallbackMessage, lastFailureContextRef.current ?? undefined);
 				}
 			}
 
 			setIsComplete(true);
+			writeAutomationGuard('completed');
 			
 			registerLog(' Sequência de automação da segunda etapa concluída.');
 			printLogs();
@@ -599,7 +686,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			clearInterval(errorCheckInterval);
 		};
 
-	}, [isCaixaPage]);
+	}, [isCaixaPage, readAutomationGuard, writeAutomationGuard]);
 
 	return (
 		<SimulationOverlay

@@ -19,7 +19,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
       [key: string]: chrome.storage.StorageChange;
     }) => {
       if (changes.authToken && changes.authToken.newValue) {
-        console.log("[LoginScreen] Auth token detected, authenticating...");
+        console.log("[LoginScreen] Token de autenticação detectado, autenticando...");
         onAuthenticated();
       }
     };
@@ -33,20 +33,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
 
   const checkExistingAuth = async () => {
     try {
-      console.log("[LoginScreen] Checking existing auth...");
+      console.log("[LoginScreen] Verificando autenticação existente...");
       const result = await chrome.storage.local.get([
         "authToken",
         "authExpiry",
         "sessionData",
       ]);
-      console.log("[LoginScreen] Stored auth data:", result);
-      console.log("[LoginScreen] Current time:", new Date().getTime());
-      console.log("[LoginScreen] Token expiry:", result.authExpiry);
+      console.log("[LoginScreen] Dados de autenticação armazenados:", result);
+      console.log("[LoginScreen] Hora atual:", new Date().getTime());
+      console.log("[LoginScreen] Expiração do token:", result.authExpiry);
       console.log(
-        "[LoginScreen] Time until expiry:",
+        "[LoginScreen] Tempo até expiração:",
         result.authExpiry
           ? (result.authExpiry - new Date().getTime()) / 1000 / 60
-          : "no expiry"
+          : "sem expiração"
       );
 
       if (
@@ -54,25 +54,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
         result.authExpiry &&
         new Date().getTime() < result.authExpiry
       ) {
-        console.log("[LoginScreen] Valid auth found, auto-logging in...");
+        console.log("[LoginScreen] Autenticação válida encontrada, login automático...");
         onAuthenticated();
         return;
       } else {
         if (!result.authToken) {
-          console.log("[LoginScreen] No authToken found");
+          console.log("[LoginScreen] Nenhum authToken encontrado");
         }
         if (!result.authExpiry) {
-          console.log("[LoginScreen] No authExpiry found");
+          console.log("[LoginScreen] Nenhuma data de expiração encontrada");
         }
         if (result.authExpiry && new Date().getTime() >= result.authExpiry) {
-          console.log("[LoginScreen] Token expired");
+          console.log("[LoginScreen] Token expirado");
         }
       }
 
-      console.log("[LoginScreen] Cleaning up invalid auth...");
+      console.log("[LoginScreen] Limpando autenticação inválida...");
       await cleanLocalStorage();
     } catch (error) {
-      console.log("[LoginScreen] No existing auth found:", error);
+      console.log("[LoginScreen] Nenhuma autenticação existente encontrada:", error);
       await cleanLocalStorage();
     }
   };
@@ -135,23 +135,23 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
 
         const cookieData = results[0].result;
 
-        if (cookieData && cookieData.cotonicSid && cookieData.zAuth) {
+          if (cookieData && cookieData.cotonicSid && cookieData.zAuth) {
           console.log(
-            "[LoginScreen] Cookies extracted successfully:",
+            "[LoginScreen] Cookies extraídos com sucesso:",
             cookieData
           );
 
-          // Store auth data
+          // Dados de autenticação
           const authData = {
             authToken: cookieData.zAuth,
-            authExpiry: new Date().getTime() + 24 * 60 * 60 * 1000, // 24 hours
+            authExpiry: new Date().getTime() + 24 * 60 * 60 * 1000, 
             sessionData: cookieData,
           };
 
-          console.log("[LoginScreen] Storing auth data...");
+          console.log("[LoginScreen] Armazenando dados de autenticação...");
           await chrome.storage.local.set(authData);
 
-          console.log("[LoginScreen] Sending to background script...");
+          console.log("[LoginScreen] Enviando para o background...");
 
           try {
             (chrome.runtime.sendMessage as any)({
@@ -162,7 +162,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
             // ignore errors when runtime/sendMessage isn't available synchronously
           }
 
-          console.log("[LoginScreen] Authentication successful!");
+          console.log("[LoginScreen] Autenticação bem-sucedida!");
           onAuthenticated();
         } else {
           throw new Error("Authentication cookies not found");

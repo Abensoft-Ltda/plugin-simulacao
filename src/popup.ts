@@ -1,4 +1,4 @@
-console.log("Popup script loaded!");
+console.log("Script do popup carregado!");
 
 document.addEventListener('DOMContentLoaded', () => {
 

@@ -59,16 +59,16 @@ export const useAutomation = () => {
 
     const startSimulation = async (banks: string[] = ['caixa']) => {
         chrome.storage.local.remove(['simulationResult']);
-        writeLog(`[popup] Starting simulation for banks: ${banks.join(', ')}`);
+            writeLog(`[popup] Iniciando simulação para bancos: ${banks.join(', ')}`);
         await Promise.all(
             banks.map(bank => {
                 return new Promise((resolve) => {
                     const bankData = { ...defaultData, target: bank };
                     chrome.runtime.sendMessage({ action: "startSimulationRequest", data: { targets: [bankData] } }, (response) => {
                         if (chrome.runtime.lastError) {
-                            writeLog(`[popup] Error for ${bank}: ${chrome.runtime.lastError.message}`);
+                            writeLog(`[popup] Erro para ${bank}: ${chrome.runtime.lastError.message}`);
                         } else {
-                            writeLog(`[popup] ${bank} response: ${response?.status}`);
+                            writeLog(`[popup] Resposta de ${bank}: ${response?.status}`);
                         }
                         resolve(response);
                     });

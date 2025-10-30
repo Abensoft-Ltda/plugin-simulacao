@@ -1,6 +1,7 @@
 import { writeLog } from './lib/logger';
 import { CaixaFields, BBFields } from './methods/Validation';
 import { SimulationResultService } from './lib/SimulationResultService';
+import { SimulationPayload } from './lib/SimulationPayload';
 import { AuthService } from './lib/AuthService';
 
 let activeAutomations = new Map<number, any>();
@@ -63,6 +64,55 @@ function resolveBankLabel(targetData: Record<string, any>): { raw: string; norma
     }
 
     return null;
+}
+
+const pickFirstNonEmpty = (source: Record<string, any>, keys: string[]): string | null => {
+    for (const key of keys) {
+        const value = source?.[key];
+        if (value === undefined || value === null) continue;
+        const text = typeof value === 'string' ? value.trim() : String(value);
+        if (text.length > 0 && text !== 'null' && text !== 'undefined') {
+            return text;
+        }
+    }
+    return null;
+};
+
+async function reportValidationFailure(targetData: Record<string, any>, bankNormalized: string, errors: string[]): Promise<void> {
+    if (!Array.isArray(errors) || errors.length === 0) {
+        return;
+    }
+
+    let simId = pickFirstNonEmpty(targetData, ['simulacao_id', 'sim_id', 'simId', 'id', 'simulationId']);
+    const targetFields = (targetData && typeof targetData === 'object' ? (targetData as Record<string, any>).fields : undefined) as Record<string, any> | undefined;
+    if (!simId && targetFields) {
+        simId = pickFirstNonEmpty(targetFields, ['simulacao_id', 'sim_id', 'simId', 'id', 'simulationId']);
+    }
+
+    let ifId = pickFirstNonEmpty(targetData, ['leal_if_id', 'if_id', 'simulacao-leal_if_id', 'target', 'simulacao-target']);
+    if (!ifId && targetFields) {
+        ifId = pickFirstNonEmpty(targetFields, ['leal_if_id', 'if_id', 'simulacao-leal_if_id', 'target', 'simulacao-target']);
+    }
+    ifId = ifId ?? bankNormalized;
+
+    if (!simId) {
+        writeLog(`[background] Falha de validação para ${bankNormalized} sem identificador de simulação. Pulando envio ao servidor.`);
+        return;
+    }
+
+    const simIdValue = simId;
+    const ifIdValue = ifId ?? bankNormalized;
+
+    const failurePayload = new SimulationPayload(ifIdValue, 'failure');
+    errors.forEach((error) => failurePayload.addFailure(error));
+
+    try {
+        await simulationResultService.sendResultsToServer(simIdValue, ifIdValue, failurePayload.toJSON());
+        writeLog(`[background] Falha de validação reportada ao servidor para ${bankNormalized}.`);
+    } catch (error: any) {
+        const message = error instanceof Error ? error.message : String(error);
+        writeLog(`[background] Erro ao enviar falha de validação para ${bankNormalized}: ${message}`);
+    }
 }
 
 // Bank routing function to handle different bank simulations
@@ -370,6 +420,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
                 if (errors.length > 0) {
                     writeLog(`[background] Erros de validação para ${targetName}: ${errors.join(', ')}`);
+                    await reportValidationFailure(target, targetName, errors);
                     return { target: targetName, errors };
                 }
 

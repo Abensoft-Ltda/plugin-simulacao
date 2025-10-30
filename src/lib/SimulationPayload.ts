@@ -73,8 +73,7 @@ export class SimulationPayload {
 
   private prefixMessage(value: string | null): string {
     const texto = sanitizeText(value) ?? 'erro não especificado';
-    const prefix = `${this.ifName}:`;
-    return texto.toLowerCase().startsWith(prefix) ? texto : `${prefix} ${texto}`;
+    return texto;
   }
 
   private createEntry(value: Partial<SimulacaoEntry> | string): SimulacaoEntry {
@@ -105,10 +104,6 @@ export class SimulationPayload {
         }
       }
     });
-
-    if (entry.tipo_amortizacao) {
-      entry.tipo_amortizacao = this.prefixMessage(entry.tipo_amortizacao);
-    }
 
     return entry;
   }

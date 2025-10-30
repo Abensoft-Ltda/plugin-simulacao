@@ -33,7 +33,7 @@ const Popup: React.FC = () => {
                 setIsAuthenticated(true);
             }
         } catch (error) {
-            console.log('[popup] No existing auth found', error);
+            console.log('[popup] Nenhuma autenticação encontrada', error);
         } finally {
             setIsCheckingAuth(false);
         }
