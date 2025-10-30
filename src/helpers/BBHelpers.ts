@@ -1108,8 +1108,8 @@ export class BBHelpers {
     const cet = infoMap['custo efetivo total'] || null;
 
     return {
-      tipo_amortizacao: `Opção personalizada com prazo de ${prazo}\n
-                                  Quantidade de parcelas: ${parcela}` ,
+      tipo_amortizacao: `Opção com prazo de ${prazo}\n
+                                  Valor das parcelas: ${parcela}` ,
       valor_total: valorSolicitado,
       valor_entrada: null,
       juros_nominais: taxa,
