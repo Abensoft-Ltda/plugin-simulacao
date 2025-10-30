@@ -406,16 +406,17 @@ export class BBHelpers {
       await Helpers.delay(40);
 
       for (const char of chars) {
-        const keydown = new KeyboardEvent('keydown', { key: char, code: char, keyCode: char.charCodeAt(0), which: char.charCodeAt(0), bubbles: true, cancelable: true });
+        const keyCode = char.charCodeAt(0);
+        const keydown = new KeyboardEvent('keydown', { key: char, code: char, keyCode, which: keyCode, bubbles: true, cancelable: true });
         input.dispatchEvent(keydown);
-        const keypress = new KeyboardEvent('keypress', { key: char, code: char, keyCode: char.charCodeAt(0), which: char.charCodeAt(0), bubbles: true, cancelable: true });
+        const keypress = new KeyboardEvent('keypress', { key: char, code: char, keyCode, which: keyCode, bubbles: true, cancelable: true });
         input.dispatchEvent(keypress);
         input.value = `${input.value}${char}`;
         const inputEvent = typeof InputEvent === 'function'
           ? new InputEvent('input', { bubbles: true, cancelable: true, data: char, inputType: 'insertText' })
           : new Event('input', { bubbles: true, cancelable: true });
         input.dispatchEvent(inputEvent);
-        const keyup = new KeyboardEvent('keyup', { key: char, code: char, keyCode: char.charCodeAt(0), which: char.charCodeAt(0), bubbles: true, cancelable: true });
+        const keyup = new KeyboardEvent('keyup', { key: char, code: char, keyCode, which: keyCode, bubbles: true, cancelable: true });
         input.dispatchEvent(keyup);
         await Helpers.delay(45);
       }
@@ -502,106 +503,161 @@ export class BBHelpers {
 
       for (const attr of referencedAttributes) {
         if (!attr) continue;
-        const parts = attr.split(/\s+/);
-        for (const part of parts) {
-          const dom = document.getElementById(part);
-          if (dom && dom instanceof HTMLElement) containers.add(dom);
+        const ids = attr.split(/\s+/);
+        for (const id of ids) {
+          const el = document.getElementById(id);
+          if (el instanceof HTMLElement && isElementVisible(el)) {
+            containers.add(el);
+          }
         }
       }
 
       for (const selector of containerSelectors) {
-        const nodes = document.querySelectorAll(selector);
-        nodes.forEach(node => {
+        const nodes = Array.from(document.querySelectorAll(selector));
+        for (const node of nodes) {
           if (node instanceof HTMLElement && isElementVisible(node)) {
             containers.add(node);
           }
-        });
+        }
       }
+
+      if (fieldRoot) containers.add(fieldRoot);
 
       return Array.from(containers);
     };
 
-    const findMatchingOption = (options: HTMLElement[]) => {
-      const normalizedDisplay = Helpers.normalizeText(displayValue);
-      let fallback: HTMLElement | null = null;
-      for (const option of options) {
-        const text = Helpers.normalizeText(option.textContent);
-        if (!text) continue;
-        if (text === normalizedDisplay) return option;
-        if (!fallback && text.includes(normalizedDisplay)) fallback = option;
-      }
-      return fallback;
-    };
+    const buttonRect = button.getBoundingClientRect();
+    const waitForOptions = async (): Promise<HTMLElement[]> => {
+      const timeout = Date.now() + 2500;
+      while (Date.now() < timeout) {
+        const containers = getOptionContainers();
+        let closest: { distance: number; options: HTMLElement[] } | null = null;
 
-    const clickButton = () => {
-      button?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      button?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-      button?.click();
-    };
+        for (const container of containers) {
+          const options = gatherOptions(container);
+          if (!options.length) continue;
+          const rect = container.getBoundingClientRect();
+          const distance = Math.hypot(
+            (rect.left + rect.width / 2) - (buttonRect.left + buttonRect.width / 2),
+            (rect.top + rect.height / 2) - (buttonRect.top + buttonRect.height / 2),
+          );
+          if (!closest || distance < closest.distance) {
+            closest = { distance, options };
+          }
+        }
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      clickButton();
-      await Helpers.delay(150);
+        if (closest && closest.options.length) {
+          return closest.options;
+        }
 
-      let options = gatherOptions();
-      if (options.length === 0) {
+        const fallback = gatherOptions();
+        if (fallback.length) return fallback;
+
         await Helpers.delay(120);
-        options = gatherOptions();
       }
 
+      return gatherOptions();
+    };
+
+    const findMatchingOption = (options: HTMLElement[]): HTMLElement | null => {
+      for (const option of options) {
+        const optionText = Helpers.normalizeText(option.textContent);
+        if (!optionText) continue;
+        const match = candidateTexts.some(text => optionText === text || optionText.includes(text));
+        if (match) return option;
+      }
+      return null;
+    };
+
+    const readButtonDisplayedValue = () => {
+      if (fieldRoot) {
+        const displayNode = fieldRoot.querySelector('.select-text span, .bb-select-label, .bb-select-value') as HTMLElement | null;
+        if (displayNode) return Helpers.normalizeText(displayNode.textContent);
+      }
+      return Helpers.normalizeText(button.textContent || '');
+    };
+
+    const isOverlayOpen = () => {
+      const overlayPane = document.querySelector('.cdk-overlay-container .cdk-overlay-pane.bb-select-overlay');
+      return !!overlayPane && isElementVisible(overlayPane as HTMLElement);
+    };
+
+    ensureHiddenInputValue();
+
+    for (let attempt = 0; attempt < MAX_AUTOMATION_ATTEMPTS; attempt++) {
+      button.focus();
+      button.click();
+      await Helpers.delay(180);
+
+      if (fieldInput && document.activeElement !== fieldInput) {
+        fieldInput.focus();
+        await Helpers.delay(40);
+      }
+
+      let options = await waitForOptions();
       let targetOption = findMatchingOption(options);
-      let normalizedTarget: HTMLElement | null = null;
 
-      const updateTargetReferences = (option: HTMLElement) => {
-        normalizedTarget = option.matches('button, a, [role="option"], [role="menuitem"], .bb-option, .mat-option, .menu-item')
-          ? option
-          : (option.closest('button, a, [role="option"], [role="menuitem"], .bb-option, .mat-option, .menu-item') as HTMLElement) || option;
-      };
-
-      if (targetOption) {
-        updateTargetReferences(targetOption);
-      } else if (shouldUseSearchInput && fieldInput) {
+      if (!targetOption && fieldInput) {
         await typeIntoInput(fieldInput, displayValue.toUpperCase());
         await Helpers.delay(200);
-        options = gatherOptions();
+        options = await waitForOptions();
         targetOption = findMatchingOption(options);
-        if (targetOption) updateTargetReferences(targetOption);
       }
 
-      if (!targetOption) {
-        log(logger, ` Could not find option "${displayValue}" on attempt ${attempt + 1} for dropdown "${controlName}"`);
-        flush(logger);
-      } else {
-        const optionContainers = getOptionContainers();
-        const focusableOptions = optionContainers.flatMap(container => gatherOptions(container));
-        const buttonDisplayReader = () => {
-          const displayNode = button?.querySelector('.bb-select-field-button__label, .bb-select-field-button__value');
-          const text = displayNode?.textContent ? Helpers.normalizeText(displayNode.textContent) : '';
-          if (!text && button) {
-            return Helpers.normalizeText(button.textContent);
+      if (targetOption) {
+        const normalizeOptionElement = (element: HTMLElement | null): HTMLElement | null => {
+          if (!element) return null;
+          if (element.matches('a, button, [role="option"], [role="menuitem"]')) return element;
+          const focusable = element.querySelector('a, button, [role="option"], [role="menuitem"]') as HTMLElement | null;
+          return focusable || element;
+        };
+
+        const orderedOptions = [...options];
+        orderedOptions.sort((a, b) => {
+          if (a === b) return 0;
+          const position = a.compareDocumentPosition(b);
+          if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+          if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+          return 0;
+        });
+
+        const focusableOptions = orderedOptions.map(option => normalizeOptionElement(option) || option);
+        let normalizedTarget = normalizeOptionElement(targetOption) || targetOption;
+        let targetIndex = -1;
+
+        const matchOptionIndex = (element: HTMLElement | null): number => {
+          if (!element) return -1;
+          for (let i = 0; i < focusableOptions.length; i++) {
+            const option = focusableOptions[i];
+            if (option === element || option.contains(element) || element.contains(option)) {
+              return i;
+            }
           }
-          return text;
+          return -1;
         };
 
-        const readButtonDisplayedValue = () => buttonDisplayReader();
-
-        const isOverlayOpen = () => {
-          return optionContainers.some(container => isElementVisible(container));
+        const updateTargetReferences = (option: HTMLElement | null) => {
+          normalizedTarget = option ? (normalizeOptionElement(option) || option) : null;
+          targetIndex = matchOptionIndex(normalizedTarget);
+          if (targetIndex === -1) {
+            targetIndex = matchOptionIndex(option);
+          }
         };
 
-        const matchOptionIndex = (option: HTMLElement | null) => {
-          if (!option) return -1;
-          const normalizedOption = Helpers.normalizeText(option.textContent);
-          return focusableOptions.findIndex(item => Helpers.normalizeText(item.textContent) === normalizedOption);
-        };
+        updateTargetReferences(targetOption);
 
-        const getActiveIndex = () => {
+        const getActiveIndex = (): number => {
           const activeElement = document.activeElement as HTMLElement | null;
-          if (!activeElement) return -1;
-          if (focusableOptions.includes(activeElement)) {
-            return matchOptionIndex(activeElement);
+          if (fieldInput && activeElement === fieldInput) {
+            const activeSomewhere = focusableOptions.findIndex(opt =>
+              opt.classList.contains('active') ||
+              opt.getAttribute('aria-selected') === 'true' ||
+              opt.matches('[aria-current="true"]')
+            );
+            if (activeSomewhere !== -1) return activeSomewhere;
           }
-          const activeId = activeElement.getAttribute('id');
+
+          const activeId = button.getAttribute('aria-activedescendant');
           if (activeId) {
             const activeElementById = document.getElementById(activeId) as HTMLElement | null;
             const matchById = matchOptionIndex(activeElementById);
@@ -691,10 +747,8 @@ export class BBHelpers {
             new MouseEvent('click', { bubbles: true, cancelable: true, clientX, clientY, button: 0 }),
           ];
 
-          if (clickableOption) {
-            pointerEvents.forEach(event => clickableOption.dispatchEvent(event));
-            if (typeof clickableOption.click === 'function') clickableOption.click();
-          }
+          pointerEvents.forEach(event => clickableOption.dispatchEvent(event));
+          if (typeof clickableOption.click === 'function') clickableOption.click();
           if (menuItem) {
             pointerEvents.forEach(event => menuItem.dispatchEvent(event));
             if (typeof menuItem.click === 'function') menuItem.click();
@@ -720,15 +774,13 @@ export class BBHelpers {
 
         let selectionConfirmed = false;
 
-        if (targetOption && focusableOptions.length > 0 && !shouldUseSearchInput) {
+        if (targetIndex !== -1 && focusableOptions.length > 0 && !shouldUseSearchInput) {
           const firstOption = focusableOptions[0];
-          if (firstOption) {
-            if (document.activeElement !== firstOption) {
-              firstOption.focus?.();
-              firstOption.dispatchEvent(new FocusEvent('focus', { bubbles: false }));
-              firstOption.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
-              await Helpers.delay(80);
-            }
+          if (firstOption && document.activeElement !== firstOption) {
+            firstOption.focus?.();
+            firstOption.dispatchEvent(new FocusEvent('focus', { bubbles: false }));
+            firstOption.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
+            await Helpers.delay(80);
           }
 
           if (document.activeElement === button || document.activeElement === document.body) {
@@ -738,7 +790,7 @@ export class BBHelpers {
 
           let currentIndex = getActiveIndex();
           if (currentIndex === -1 && firstOption) {
-            currentIndex = focusableOptions.findIndex(opt => opt === firstOption);
+            currentIndex = matchOptionIndex(firstOption);
           }
           if (currentIndex === -1) {
             sendNavigationKey('Home');
@@ -748,7 +800,6 @@ export class BBHelpers {
 
           let guard = 0;
           const guardLimit = focusableOptions.length + 5;
-          const targetIndex = matchOptionIndex(targetOption);
           while (guard < guardLimit && currentIndex !== targetIndex) {
             const direction = currentIndex === -1 || currentIndex < targetIndex ? 'ArrowDown' : 'ArrowUp';
             sendNavigationKey(direction);
@@ -774,7 +825,7 @@ export class BBHelpers {
           selectionConfirmed = selectionState.confirmed || !selectionState.overlayStillOpen;
 
           if (!selectionConfirmed) {
-            options = gatherOptions();
+            options = await waitForOptions();
             targetOption = findMatchingOption(options);
             if (targetOption) {
               updateTargetReferences(targetOption);
@@ -800,6 +851,9 @@ export class BBHelpers {
 
         log(logger, ` Dropdown "${controlName}" selection attempt for value "${displayValue}" did not stick. Will retry...`);
         flush(logger);
+      } else {
+        log(logger, ` Could not find option "${displayValue}" on attempt ${attempt + 1} for dropdown "${controlName}"`);
+        flush(logger);
       }
 
       const escapeEvent = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true });
@@ -811,6 +865,7 @@ export class BBHelpers {
     flush(logger);
     return false;
   }
+
 
   static resolveDesiredPropertyTab(targetFields: Record<string, any>): 'residencial' | 'comercial' {
     const rawValue = typeof targetFields?.tipo_imovel === 'string' ? targetFields.tipo_imovel : '';
