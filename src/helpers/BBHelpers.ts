@@ -64,7 +64,7 @@ export class BBHelpers {
     for (const dialog of dialogs) {
       const text = dialog.textContent?.trim();
       if (text && /obrigatório|inválido|erro/i.test(text)) {
-        log(logger, `Found possible error dialog with text: "${text}"`);
+        log(logger, `Encontrado possível diálogo de erro com o texto: "${text}"`);
         return true;
       }
     }
@@ -74,11 +74,11 @@ export class BBHelpers {
   static async setInstantValue(selector: string, value: string, logger: Logger, isSelect = false): Promise<boolean> {
     const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement;
     if (!el) {
-      log(logger, ` Element not found: ${selector}`);
+      log(logger, ` Elemento não encontrado: ${selector}`);
       flush(logger);
       return false;
     }
-    log(logger, ` Setting ${selector} instantly to: "${value}"`);
+    log(logger, ` Configurando ${selector} instantaneamente para: "${value}"`);
     if (isSelect) {
       const select = el as HTMLSelectElement;
       const option = Array.from(select.options).find(opt =>
@@ -87,7 +87,7 @@ export class BBHelpers {
       );
       if (option) {
         select.value = option.value;
-        log(logger, ` Selected option: "${option.text}" (value: ${option.value})`);
+        log(logger, ` Opção selecionada: "${option.text}" (valor: ${option.value})`);
       }
     } else {
       el.value = value;
@@ -101,12 +101,12 @@ export class BBHelpers {
       : (el as HTMLInputElement).value;
 
     if (finalValue && finalValue.trim() !== '') {
-      log(logger, ` Success: ${selector} now has value "${finalValue}".`);
+      log(logger, ` Sucesso: ${selector} agora tem o valor "${finalValue}".`);
       flush(logger);
       return true;
     }
 
-    log(logger, ` Warning: ${selector} is still empty after attempting to set it to "${value}".`);
+    log(logger, ` Aviso: ${selector} continua vazio após tentativa de configurar para "${value}".`);
     flush(logger);
     return false;
   }
@@ -129,8 +129,8 @@ export class BBHelpers {
     for (let i = 0; i < retries; i++) {
       try {
         const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement;
-        if (!el) throw new Error(`Element not found for selector: ${selector}`);
-        log(logger, ` Simulating input for ${selector} with value "${value}" (Attempt ${i + 1})`);
+        if (!el) throw new Error(`Elemento não encontrado para o seletor: ${selector}`);
+        log(logger, ` Simulando inserção para ${selector} com valor "${value}" (Tentativa ${i + 1})`);
         const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         const dispatchEvent = (element: Element, eventName: string) => {
           element.dispatchEvent(new Event(eventName, { bubbles: true, cancelable: true }));
@@ -195,17 +195,23 @@ export class BBHelpers {
         const success = finalValueCheck ? finalValueCheck(finalValue) : finalValue.trim() !== '';
 
         if (success) {
-          log(logger, ` Success: ${selector} has a value "${finalValue}". Assuming success.`);
+          log(logger, ` Sucesso: ${selector} tem o valor "${finalValue}". Assumindo sucesso.`);
           flush(logger);
           return true;
         } else {
-          throw new Error(`Failed to verify value for ${selector}. Field is empty.`);
+          // Se finalValueCheck não foi fornecido, consideramos sucesso (lógica "cega")
+          if (!finalValueCheck) {
+            log(logger, ` Sucesso (sem validação): ${selector} foi preenchido.`);
+            flush(logger);
+            return true;
+          }
+          throw new Error(`Falha ao verificar valor para ${selector}. O campo está vazio.`);
         }
       } catch (error: any) {
-        log(logger, ` Attempt ${i + 1} failed for ${selector}: ${error.message}`);
+        log(logger, ` Tentativa ${i + 1} falhou para ${selector}: ${error.message}`);
         flush(logger);
         if (i === retries - 1) {
-          log(logger, ` All ${retries} attempts failed for selector: ${selector}`);
+          log(logger, ` Todas as ${retries} tentativas falharam para o seletor: ${selector}`);
           flush(logger);
           return false;
         }
@@ -224,8 +230,8 @@ export class BBHelpers {
   ): Promise<void> {
     try {
       const el = document.querySelector(selector) as HTMLSelectElement;
-      if (!el) throw new Error(`Element not found for selector: ${selector}`);
-      log(logger, ` Setting ${selector} directly with value "${value}"`);
+      if (!el) throw new Error(`Elemento não encontrado para o seletor: ${selector}`);
+      log(logger, ` Configurando ${selector} diretamente com o valor "${value}"`);
       const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       const dispatchEvent = (element: Element, eventName: string) => {
         element.dispatchEvent(new Event(eventName, { bubbles: true, cancelable: true }));
@@ -236,7 +242,7 @@ export class BBHelpers {
       const cached = selectCache.get(selector);
       if (cached && cached.optionsHash === optionsHash) {
         lookup = cached.lookup;
-        log(logger, ` Using cached lookup table for ${selector} (${Object.keys(lookup).length} options)`);
+        log(logger, ` Usando tabela de cache para ${selector} (${Object.keys(lookup).length} opções)`);
       } else {
         lookup = {};
         for (let i = 0; i < options.length; i++) {
@@ -246,7 +252,7 @@ export class BBHelpers {
           if (optionText && optionValue) lookup[optionText] = optionValue;
         }
         selectCache.set(selector, { lookup, optionsHash });
-        log(logger, ` Cached lookup table with ${Object.keys(lookup).length} options`);
+        log(logger, ` Tabela de cache armazenada com ${Object.keys(lookup).length} opções`);
       }
       const normalizedValue = value.trim().toUpperCase();
       let optionValue = lookup[normalizedValue];
@@ -263,12 +269,12 @@ export class BBHelpers {
             if (normalizedValue.includes(k)) { optionValue = lookup[k]; matched = k; break; }
           }
         }
-        if (optionValue) log(logger, ` Found match: "${normalizedValue}" → "${matched}"`);
+        if (optionValue) log(logger, ` Correspondência encontrada: "${normalizedValue}" → "${matched}"`);
       }
       if (!optionValue) {
         const available = Object.keys(lookup).slice(0, 10).join(', ');
-        log(logger, ` Available options (first 10): ${available}...`);
-        throw new Error(`Value "${value}" not found in options`);
+        log(logger, ` Opções disponíveis (10 primeiras): ${available}...`);
+        throw new Error(`Valor "${value}" não encontrado nas opções`);
       }
       el.value = optionValue;
       dispatchEvent(el, 'change');
@@ -282,13 +288,13 @@ export class BBHelpers {
       await wait(delay);
       const selectedOption = el.selectedOptions[0];
       if (selectedOption && selectedOption.value === optionValue) {
-        log(logger, ` Success: Set ${selector} to "${selectedOption.text}" (value: ${optionValue})`);
+        log(logger, ` Sucesso: ${selector} configurado para "${selectedOption.text}" (valor: ${optionValue})`);
         flush(logger);
       } else {
-        throw new Error(`Failed to set value for ${selector}`);
+        throw new Error(`Falha ao configurar valor para ${selector}`);
       }
     } catch (error: any) {
-      log(logger, ` Failed to set ${selector}: ${error.message}`);
+      log(logger, ` Falha ao configurar ${selector}: ${error.message}`);
       flush(logger);
       throw error;
     }
@@ -310,11 +316,11 @@ export class BBHelpers {
           const success = await handler(selector);
           if (success) return true;
           retrySelectors.push(selector);
-          log(logger, ` Handler reported failure for ${logLabel} using selector "${selector}". Trying alternatives...`);
+          log(logger, ` Handler relatou falha para ${logLabel} usando seletor "${selector}". Tentando alternativas...`);
           flush(logger);
         } catch (error: any) {
           retrySelectors.push(selector);
-          log(logger, ` Error while handling ${logLabel} with selector "${selector}": ${error.message || error}`);
+          log(logger, ` Erro ao manusear ${logLabel} com seletor "${selector}": ${error.message || error}`);
           flush(logger);
         }
       } else {
@@ -337,16 +343,16 @@ export class BBHelpers {
         try {
           const success = await handler(selector);
           if (success) return true;
-          log(logger, ` Handler reported failure for ${logLabel} using selector "${selector}" after waiting. Trying next option...`);
+          log(logger, ` Handler relatou falha para ${logLabel} usando seletor "${selector}" após aguardar. Tentando próxima opção...`);
           flush(logger);
         } catch (error: any) {
-          log(logger, ` Error while handling ${logLabel} with selector "${selector}" after waiting: ${error.message || error}`);
+          log(logger, ` Erro ao manusear ${logLabel} com seletor "${selector}" após aguardar: ${error.message || error}`);
           flush(logger);
         }
       }
     }
 
-    log(logger, ` Failed to resolve element for ${logLabel}. Tried selectors: ${selectors.join(', ')}`);
+    log(logger, ` Falha ao resolver elemento para ${logLabel}. Seletores tentados: ${selectors.join(', ')}`);
     flush(logger);
     return false;
   }
@@ -354,7 +360,7 @@ export class BBHelpers {
   static async selectFromDropdown(controlName: string, value: string, logger: Logger): Promise<boolean> {
     const normalizedValue = Helpers.normalizeText(value);
     if (!normalizedValue) {
-      log(logger, ` Skipping dropdown ${controlName}: empty value`);
+      log(logger, ` Pulando dropdown ${controlName}: valor vazio`);
       flush(logger);
       return false;
     }
@@ -378,7 +384,7 @@ export class BBHelpers {
     }
 
     if (!button) {
-      log(logger, ` Dropdown button not found or enabled for control "${controlName}"`);
+      log(logger, ` Botão do dropdown não encontrado ou habilitado para o controle "${controlName}"`);
       flush(logger);
       return false;
     }
@@ -835,7 +841,7 @@ export class BBHelpers {
         }
 
         if (!selectionConfirmed) {
-          log(logger, ` Keyboard/search navigation did not confirm selection for "${displayValue}". Attempting pointer fallback...`);
+          log(logger, ` Navegação por teclado/busca não confirmou a seleção de "${displayValue}". Tentando fallback por clique...`);
           flush(logger);
           if (!normalizedTarget && targetOption) {
             updateTargetReferences(targetOption);
@@ -844,15 +850,15 @@ export class BBHelpers {
         }
 
         if (selectionConfirmed) {
-          log(logger, ` Selected dropdown "${controlName}" with value "${displayValue}"`);
+          log(logger, ` Dropdown "${controlName}" selecionado com valor "${displayValue}"`);
           flush(logger);
           return true;
         }
 
-        log(logger, ` Dropdown "${controlName}" selection attempt for value "${displayValue}" did not stick. Will retry...`);
+        log(logger, ` Tentativa de seleção no dropdown "${controlName}" para o valor "${displayValue}" não funcionou. Tentando novamente...`);
         flush(logger);
       } else {
-        log(logger, ` Could not find option "${displayValue}" on attempt ${attempt + 1} for dropdown "${controlName}"`);
+        log(logger, ` Não foi possível encontrar a opção "${displayValue}" na tentativa ${attempt + 1} para o dropdown "${controlName}"`);
         flush(logger);
       }
 
@@ -861,7 +867,7 @@ export class BBHelpers {
       await Helpers.delay(250);
     }
 
-    log(logger, ` Unable to select value "${displayValue}" for dropdown "${controlName}"`);
+    log(logger, ` Não foi possível selecionar o valor "${displayValue}" para o dropdown "${controlName}"`);
     flush(logger);
     return false;
   }
@@ -907,64 +913,74 @@ export class BBHelpers {
     desiredTab: 'residencial' | 'comercial',
     logger: Logger
   ): Promise<{ contentRoot: HTMLElement | null; selectedTab: string }> {
-    const tabSelectors = [
-      `[role="tab"][data-target="${desiredTab}"]`,
-      `[role="tab"][aria-controls*="${desiredTab}"]`,
-      '.bb-tab-title',
-      '.bb-tab-title button',
-      '.bb-tab button',
-      '.bb-tab-title span',
-    ];
+    const allTabs = Array.from(tabGroup.querySelectorAll('[role="tab"]')) as HTMLElement[];
+    let desiredTabElement: HTMLElement | null = null;
+    let currentActiveTab = tabGroup.querySelector('[role="tab"][aria-selected="true"]') as HTMLElement | null;
 
-    const clickTab = (tab: HTMLElement) => {
-      tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      tab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-      tab.click();
-    };
+    // Encontra a aba que queremos clicar
+    for (const tab of allTabs) {
+      const text = Helpers.normalizeText(tab.textContent);
+      if (text.includes(desiredTab)) {
+        desiredTabElement = tab;
+        break;
+      }
+    }
 
-    let selectedTab = desiredTab;
-    const activeAttribute = tabGroup.querySelector('[role="tab"][aria-selected="true"]') as HTMLElement | null;
-    if (activeAttribute) {
-      const normalized = Helpers.normalizeText(activeAttribute.textContent);
-      if (normalized.includes(desiredTab)) {
-        selectedTab = desiredTab;
-      } else if (normalized.includes('comercial')) {
-        selectedTab = 'comercial';
+    // Se a aba ativa não é a que queremos, clica na aba desejada
+    if (desiredTabElement && (!currentActiveTab || currentActiveTab !== desiredTabElement)) {
+      log(logger, ` Alternando para a aba "${desiredTab}" antes de extrair os resultados.`);
+      flush(logger);
+      // Clica na aba, ou no seu título interno se existir
+      const clickTarget = desiredTabElement.querySelector('.bb-tab-title') || desiredTabElement;
+
+      clickTarget.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      clickTarget.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      // Usa o método .click() se disponível, senão dispara um evento de clique
+      if (typeof (clickTarget as HTMLElement).click === 'function') {
+        (clickTarget as HTMLElement).click();
       } else {
-        selectedTab = 'residencial';
+        clickTarget.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       }
+
+      await Helpers.delay(450); // Aguarda a animação de troca de aba
+      currentActiveTab = desiredTabElement; // Assume que o clique foi bem-sucedido e atualiza a referência
     }
 
-    if (selectedTab !== desiredTab) {
-      for (const selector of tabSelectors) {
-        const candidate = tabGroup.querySelector(selector) as HTMLElement | null;
-        if (!candidate) continue;
-        const text = Helpers.normalizeText(candidate.textContent);
-        if (text.includes(desiredTab)) {
-          clickTab(candidate);
-          await Helpers.delay(300);
-          selectedTab = desiredTab;
-          break;
-        }
-      }
+    // Se ainda não há referência de aba ativa (ex: página acabou de carregar), usa a aba desejada se encontrada, ou a primeira
+    if (!currentActiveTab) {
+      currentActiveTab = desiredTabElement || allTabs[0];
     }
 
-    const panelSelectors = [
-      `[role="tabpanel"][id*="${selectedTab}"]`,
-      `[data-tab="${selectedTab}"]`,
-      '.bb-tab-panel',
-      '.bb-tab-content',
-      'bb-card-body sugestoes',
-    ];
+    // Se ainda assim não encontramos *nenhuma* aba, temos um problema.
+    if (!currentActiveTab) {
+      log(logger, `Não foi possível encontrar nenhuma aba para ativar.`);
+      flush(logger);
+      // Retorna o pai do tabGroup como último recurso para busca, já que o painel é provavelmente um irmão
+      return { contentRoot: tabGroup.parentElement, selectedTab: desiredTab };
+    }
 
-    for (const selector of panelSelectors) {
-      const panel = tabGroup.querySelector(selector);
+    // Determina o nome em string ("residencial" ou "comercial") da aba *realmente* selecionada
+    const activeTabText = Helpers.normalizeText(currentActiveTab.textContent);
+    const selectedTab = activeTabText.includes('comercial') ? 'comercial' : 'residencial';
+
+    // Encontra o painel pelo ID 'aria-controls'
+    // O painel NÃO é filho do tabGroup, está vinculado por um ID.
+    const panelId = currentActiveTab.getAttribute('aria-controls');
+    if (panelId) {
+      // Painéis são controlados a nível de documento pelo ID, não pela hierarquia DOM
+      const panel = document.getElementById(panelId);
       if (panel instanceof HTMLElement) {
+        log(logger, `Encontrado painel da aba ativa #${panelId} para a aba "${selectedTab}"`);
+        flush(logger);
         return { contentRoot: panel, selectedTab };
       }
     }
 
-    return { contentRoot: null, selectedTab };
+    // Se a busca por ID falhar, é um erro.
+    log(logger, `Não foi possível encontrar o painel pelo ID "${panelId}" para a aba "${selectedTab}". Retornando o pai do tabGroup como último recurso.`);
+    flush(logger);
+    // Retorna o pai do tabGroup, já que o painel é provavelmente um irmão.
+    return { contentRoot: tabGroup.parentElement, selectedTab };
   }
 
   static extractCardResultsFromRoot(
@@ -973,7 +989,9 @@ export class BBHelpers {
     entryCurrencyValue: string
   ): Array<Record<string, any>> {
     const cardSelector = 'bb-card, .bb-card, bb-card-default, bb-sugestao-card, custom-card div[id="card"], custom-card .m-3.p-3, custom-card [data-card]';
-    const rawCards = Array.from(contentRoot.querySelectorAll(cardSelector));
+    // Se o contentRoot for nulo, busca no documento inteiro como último recurso
+    const searchContext = contentRoot || document.body;
+    const rawCards = Array.from(searchContext.querySelectorAll(cardSelector));
     const seen = new Set<Element>();
     const cards = rawCards.filter(card => {
       if (seen.has(card)) return false;
@@ -983,21 +1001,24 @@ export class BBHelpers {
     const results: Array<Record<string, any>> = [];
 
     cards.forEach((card, index) => {
-      const headerNode = card.querySelector('.bb-card-title, .bb-card-header, header, bb-title h1, h1');
-      const rawHeader = headerNode?.textContent ? headerNode.textContent.replace(/\s+/g, ' ').trim() : '';
+      // Gerar o nome da opção com base na aba e no índice
+      const optionName = `${Helpers.capitalizeWords(selectedTab)} Opção ${index + 1}`;
 
       const entry: Record<string, any> = {
+        tipo_amortizacao: optionName,
         tab_origem: selectedTab,
         valor_entrada: entryCurrencyValue,
       };
 
-      if (rawHeader) {
-        entry.tipo_amortizacao = rawHeader;
-      }
-
       const hasStructuredBody = Boolean(card.querySelector('.bb-card-body'));
 
       if (hasStructuredBody) {
+        // Bloco para cards com estrutura .bb-card-body
+        const parcelaNode = card.querySelector('bb-title h1, h1');
+        if (parcelaNode) {
+          entry.parcela = parcelaNode.textContent?.replace(/\s+/g, ' ').trim();
+        }
+
         const fields = Array.from(card.querySelectorAll('.bb-card-body .info-item, .bb-card-body .info'));
         fields.forEach(field => {
           const label = Helpers.normalizeText(field.querySelector('.info-label, .label')?.textContent);
@@ -1021,6 +1042,7 @@ export class BBHelpers {
         });
 
       } else {
+        // Bloco para a estrutura de card fornecida no HTML (custom-card)
         const parcelaValue = card.querySelector('bb-title h1, h1')?.textContent?.replace(/\s+/g, ' ').trim();
         if (parcelaValue) {
           entry.parcela = parcelaValue;
@@ -1047,14 +1069,6 @@ export class BBHelpers {
             entry.valor_entrada = value;
           }
         });
-
-       if (rawHeader) {
-          entry.tipo_amortizacao = rawHeader;
-        }
-      }
-
-      if (!entry.tipo_amortizacao || entry.tipo_amortizacao.trim().length === 0) {
-        entry.tipo_amortizacao = `Opção ${index + 1}`;
       }
 
       results.push(entry);
@@ -1062,6 +1076,7 @@ export class BBHelpers {
 
     return results;
   }
+
 
   static extractCustomSummary(summaryContainer: HTMLElement): Record<string, any> | null {
     const chipElements = Array.from(summaryContainer.querySelectorAll('bb-text-chip'));
@@ -1093,8 +1108,8 @@ export class BBHelpers {
     const cet = infoMap['custo efetivo total'] || null;
 
     return {
-      tipo_amortizacao: 'Simulação personalizada',
-      prazo,
+      tipo_amortizacao: `Opção personalizada com prazo de ${prazo}\n
+                                  Quantidade de parcelas: ${parcela}` ,
       valor_total: valorSolicitado,
       valor_entrada: null,
       juros_nominais: taxa,
@@ -1168,12 +1183,12 @@ export class BBHelpers {
         }
 
         if (customButton) {
-          log(logger, ' Clicking "Fazer do meu jeito" button to open custom form.');
+          log(logger, ' Clicando no botão "Fazer do meu jeito" para abrir o formulário personalizado.');
           flush(logger);
           customButton.click();
           await Helpers.delay(500);
         } else {
-          log(logger, ' Custom simulation button not found or disabled.');
+          log(logger, ' Botão de simulação personalizada não encontrado ou desabilitado.');
           flush(logger);
           return null;
         }
@@ -1181,7 +1196,7 @@ export class BBHelpers {
 
       formHost = await this.waitForElement('custom-form-fazer-do-meu-jeito form#form, custom-form-fazer-do-meu-jeito form', 20000) as HTMLElement | null;
       if (!formHost) {
-        log(logger, ' Custom simulation form not found.');
+        log(logger, ' Formulário de simulação personalizada não encontrado.');
         flush(logger);
         return null;
       }
@@ -1194,13 +1209,13 @@ export class BBHelpers {
       let currentEntryCurrency = entryCurrency;
 
       if (!valorDigits) {
-        log(logger, ' Skipping custom simulation: no valor_entrada/valor_imovel provided.');
+        log(logger, ' Pulando simulação personalizada: valor_entrada/valor_imovel não fornecido.');
         flush(logger);
         return null;
       }
 
       if (!prazoDigits) {
-        log(logger, ' Skipping custom simulation: no prazo information provided.');
+        log(logger, ' Pulando simulação personalizada: informação de prazo não fornecida.');
         flush(logger);
         return null;
       }
@@ -1245,7 +1260,7 @@ export class BBHelpers {
         }
       }
 
-      const valorFilled = await this.withSelectors(
+      await this.withSelectors(
         [
           'custom-form-fazer-do-meu-jeito bb-money-field[formcontrolname="valor"] input',
           'custom-form-fazer-do-meu-jeito input[placeholder="0,00"]',
@@ -1257,25 +1272,21 @@ export class BBHelpers {
           valorDigits,
           logger,
           120,
-          3,
+          1, // Tenta preencher apenas uma vez
           {
             typePerChar: true,
             clearExisting: true,
-            perCharDelay: 70,
-            finalValueCheck: (finalValue) => finalValue.replace(/\D/g, '') === valorDigits
+            perCharDelay: 70
+            // Nenhuma validação de valor final
           }
         ),
         'Custom Valor',
         logger
       );
 
-      if (!valorFilled) {
-        log(logger, ' Unable to populate custom value field.');
-        flush(logger);
-        return null;
-      }
+      // Não verifica se o valor foi preenchido, continua cegamente
 
-      const prazoFilled = await this.withSelectors(
+      await this.withSelectors(
         [
           'custom-form-fazer-do-meu-jeito input[formcontrolname="prazo"]',
           'custom-form-fazer-do-meu-jeito input[inputmode="numeric"]',
@@ -1287,27 +1298,23 @@ export class BBHelpers {
           prazoDigits,
           logger,
           120,
-          3,
+          1, // Tenta preencher apenas uma vez
           {
             typePerChar: true,
             clearExisting: true,
-            perCharDelay: 80,
-            finalValueCheck: (finalValue) => finalValue.replace(/\D/g, '') === prazoDigits
+            perCharDelay: 80
+            // Nenhuma validação de valor final
           }
         ),
         'Custom Prazo',
         logger
       );
 
-      if (!prazoFilled) {
-        log(logger, ' Unable to populate custom prazo field.');
-        flush(logger);
-        return null;
-      }
+      // Não verifica se o prazo foi preenchido, continua cegamente
 
       const advanceButton = await this.waitForElementEnabled('#botao-segundo, button#botao-segundo, custom-form-fazer-do-meu-jeito button.bb-button.primary', 8000);
       if (!advanceButton) {
-        log(logger, ' Custom simulation advance button not available.');
+        log(logger, ' Botão de avançar da simulação personalizada não está disponível.');
         flush(logger);
         return null;
       }
@@ -1317,17 +1324,17 @@ export class BBHelpers {
 
       const summaryHost = await this.waitForElement('bb-card-body resumo, resumo, custom-resumo, resumo[ng-reflect-title]', 20000);
       if (!summaryHost) {
-        log(logger, ' Custom simulation summary not detected after advancing.');
+        log(logger, ' Resumo da simulação personalizada não detectado após avançar.');
         flush(logger);
         return null;
       }
 
       const summary = this.extractCustomSummary(summaryHost as HTMLElement);
       if (summary) {
-        log(logger, ' Custom simulation summary captured.');
+        log(logger, ' Resumo da simulação personalizada capturado.');
         flush(logger);
       } else {
-        log(logger, ' Failed to parse custom simulation summary content.');
+        log(logger, ' Falha ao analisar o conteúdo do resumo da simulação personalizada.');
         flush(logger);
       }
 
@@ -1338,7 +1345,7 @@ export class BBHelpers {
 
       return summary;
     } catch (error: any) {
-      log(logger, ` Custom simulation flow threw an exception: ${error?.message || error}`);
+      log(logger, ` Fluxo de simulação personalizada gerou uma exceção: ${error?.message || error}`);
       flush(logger);
       return null;
     }

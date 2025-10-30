@@ -227,6 +227,30 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
         const mensagem = err instanceof Error ? err.message : String(err);
         const detalhe = mensagem || 'Não foi possível concluir a automação do Banco do Brasil.';
         registerLog(` Falha na automação do BB: ${detalhe}`);
+
+        // --- Inserção para redefinir ---
+        try {
+          registerLog('Tentando redefinir para "Nova simulação" após falha...');
+          const resetButton = document.querySelector('button#botao-primeiro') as HTMLElement | null;
+
+          if (resetButton) {
+            const buttonText = resetButton.textContent || '';
+            // Verificando o texto para garantir que é o botão correto
+            if (buttonText.includes('Nova simulação')) {
+              resetButton.click();
+              registerLog('Clicou em "Nova simulação" para redefinir o fluxo antes da próxima tentativa.');
+              await Helpers.delay(2000); // Aguarda a página recarregar
+            } else {
+              registerLog('Botão #botao-primeiro encontrado, mas o texto não bate com "Nova simulação".');
+            }
+          } else {
+            registerLog('Botão "Nova simulação" (#botao-primeiro) não encontrado para redefinir.');
+          }
+        } catch (resetError: any) {
+          registerLog(`Erro ao tentar clicar em "Nova simulação": ${resetError.message}`);
+        }
+        // --- Fim da inserção ---
+
         printLogs();
         lastFailureMessage = detalhe;
         return false;
