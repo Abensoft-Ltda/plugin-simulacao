@@ -909,8 +909,6 @@ export class BBHelpers {
       }
     }
 
-    log(logger, ` Could not resolve Banco do Brasil suggestion content root. Will retry.`);
-    flush(logger);
     return { contentRoot: null, selectedTab };
   }
 
@@ -919,31 +917,90 @@ export class BBHelpers {
     selectedTab: string,
     entryCurrencyValue: string
   ): Array<Record<string, any>> {
-    const cards = Array.from(contentRoot.querySelectorAll('bb-card, .bb-card, bb-card-default, bb-sugestao-card'));
+    const cardSelector = 'bb-card, .bb-card, bb-card-default, bb-sugestao-card, custom-card div[id="card"], custom-card .m-3.p-3, custom-card [data-card]';
+    const rawCards = Array.from(contentRoot.querySelectorAll(cardSelector));
+    const seen = new Set<Element>();
+    const cards = rawCards.filter(card => {
+      if (seen.has(card)) return false;
+      seen.add(card);
+      return true;
+    });
     const results: Array<Record<string, any>> = [];
 
-    cards.forEach(card => {
-      const header = Helpers.normalizeText(card.querySelector('.bb-card-title, .bb-card-header, header')?.textContent);
-      if (!header) return;
+    cards.forEach((card, index) => {
+      const headerNode = card.querySelector('.bb-card-title, .bb-card-header, header, bb-title h1, h1');
+      const rawHeader = headerNode?.textContent ? headerNode.textContent.replace(/\s+/g, ' ').trim() : '';
+
       const entry: Record<string, any> = {
-        tipo_amortizacao: header,
         tab_origem: selectedTab,
         valor_entrada: entryCurrencyValue,
       };
 
-      const fields = Array.from(card.querySelectorAll('.bb-card-body .info-item, .bb-card-body .info'));
-      fields.forEach(field => {
-        const label = Helpers.normalizeText(field.querySelector('.info-label, .label')?.textContent);
-        const value = field.querySelector('.info-value, .value')?.textContent?.trim() || '';
-        if (!label) return;
+      if (rawHeader) {
+        entry.tipo_amortizacao = rawHeader;
+      }
 
-        if (label.includes('parcela')) entry.parcela = value;
-        if (label.includes('juros efetivo')) entry.juros_efetivos = value;
-        if (label.includes('juros nominal')) entry.juros_nominais = value;
-        if (label.includes('prazo')) entry.prazo = value;
-        if (label.includes('valor total')) entry.valor_total = value;
-        if (label.includes('entrada')) entry.valor_entrada = value || entryCurrencyValue;
-      });
+      const hasStructuredBody = Boolean(card.querySelector('.bb-card-body'));
+
+      if (hasStructuredBody) {
+        const fields = Array.from(card.querySelectorAll('.bb-card-body .info-item, .bb-card-body .info'));
+        fields.forEach(field => {
+          const label = Helpers.normalizeText(field.querySelector('.info-label, .label')?.textContent);
+          const value = field.querySelector('.info-value, .value')?.textContent?.trim() || '';
+          if (!label) return;
+
+          if (label.includes('parcela')) entry.parcela = value;
+          if (label.includes('juros efetivo')) entry.juros_efetivos = value;
+          if (label.includes('juros nominal')) entry.juros_nominais = value;
+          if (label.includes('prazo')) entry.prazo = value;
+          if (label.includes('valor total')) entry.valor_total = value;
+          if (label.includes('valor solicitado')) {
+            entry.valor_total = value;
+            entry.valor_solicitado = value;
+          }
+          if (label.includes('taxa de juros')) {
+            entry.taxa_juros = value;
+            entry.juros_nominais = entry.juros_nominais || value;
+          }
+          if (label.includes('entrada')) entry.valor_entrada = value || entryCurrencyValue;
+        });
+
+      } else {
+        const parcelaValue = card.querySelector('bb-title h1, h1')?.textContent?.replace(/\s+/g, ' ').trim();
+        if (parcelaValue) {
+          entry.parcela = parcelaValue;
+        }
+
+        const infoRows = Array.from(card.querySelectorAll('.d-flex.justify-content-between'));
+        infoRows.forEach(row => {
+          const labelNode = row.querySelector('bb-caption, .bb-caption, label, span');
+          const valueNode = row.querySelector('bb-label, .bb-label, label + span, label + strong, span + span');
+          const label = Helpers.normalizeText(labelNode?.textContent);
+          const value = valueNode?.textContent?.replace(/\s+/g, ' ').trim() || '';
+          if (!label || !value) return;
+
+          if (label.includes('valor solicitado')) {
+            entry.valor_total = value;
+            entry.valor_solicitado = value;
+          }
+          if (label.includes('prazo')) entry.prazo = value;
+          if (label.includes('taxa de juros')) {
+            entry.taxa_juros = value;
+            entry.juros_nominais = value;
+          }
+          if (label.includes('entrada')) {
+            entry.valor_entrada = value;
+          }
+        });
+
+       if (rawHeader) {
+          entry.tipo_amortizacao = rawHeader;
+        }
+      }
+
+      if (!entry.tipo_amortizacao || entry.tipo_amortizacao.trim().length === 0) {
+        entry.tipo_amortizacao = `Opção ${index + 1}`;
+      }
 
       results.push(entry);
     });
@@ -1232,4 +1289,3 @@ export class BBHelpers {
     }
   }
 }
-

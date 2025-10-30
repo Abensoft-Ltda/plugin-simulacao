@@ -182,6 +182,8 @@ export const CaixaNavigator: React.FC<{ data: Record<string, any> }> = ({
             }
             registerLog(' Clicando em "Próxima etapa" para ir às opções.');
             (nextButton2 as HTMLElement).click();
+            await Helpers.delay(1000);
+            CaixaHelpers.checkForErrorDialog(logger);
 
             registerLog(
                 " Sequência de automação da primeira parte concluída. A segunda parte será tratada por CaixaNavigatorSecondStep.tsx"

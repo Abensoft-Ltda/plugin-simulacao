@@ -95,9 +95,10 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
       : null;
     const entryCurrencyValue = entryCurrency ?? 'R$ 0,00';
 
-    const deadline = Date.now() + 60000;
+    const MAX_RESULT_POLL_ATTEMPTS = 3;
+    let lastStatusMessage: string | null = null;
 
-    while (!hasSentResultsRef.current && Date.now() < deadline) {
+    for (let attempt = 1; attempt <= MAX_RESULT_POLL_ATTEMPTS && !hasSentResultsRef.current; attempt++) {
       const tabGroup = await BBHelpers.locateSuggestionTabGroup(5000);
       if (tabGroup) {
         const { contentRoot, selectedTab } = await BBHelpers.ensurePropertyTabActive(tabGroup, desiredTab, logger);
@@ -136,22 +137,40 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
             printLogs();
             return;
           } else {
-            registerLog(` Suggestion tab "${selectedTab}" did not yield cards yet. Retrying...`);
-            printLogs();
+            const message = `Attempt ${attempt}/${MAX_RESULT_POLL_ATTEMPTS}: suggestion tab "${selectedTab}" did not yield cards yet. Waiting for cards...`;
+            if (message !== lastStatusMessage) {
+              registerLog(message);
+              printLogs();
+              lastStatusMessage = message;
+            }
           }
         } else {
-          registerLog(' Could not resolve Banco do Brasil suggestion content root. Will retry.');
+          const message = `Attempt ${attempt}/${MAX_RESULT_POLL_ATTEMPTS}: Banco do Brasil suggestion content root not available. Retrying...`;
+          if (message !== lastStatusMessage) {
+            registerLog(message);
+            printLogs();
+            lastStatusMessage = message;
+          }
+        }
+      } else {
+        const message = `Attempt ${attempt}/${MAX_RESULT_POLL_ATTEMPTS}: suggestion tab group not found yet. Waiting...`;
+        if (message !== lastStatusMessage) {
+          registerLog(message);
           printLogs();
+          lastStatusMessage = message;
         }
       }
-      await Helpers.delay(1200);
+      if (!hasSentResultsRef.current && attempt < MAX_RESULT_POLL_ATTEMPTS) {
+        await Helpers.delay(1200);
+      }
     }
 
     if (!hasSentResultsRef.current) {
       const aviso = 'A página do Banco do Brasil demorou para retornar as opções de simulação.';
-      registerLog(` ${aviso} Nenhum resultado foi enviado.`);
+      const detalhe = lastStatusMessage ? ` ${lastStatusMessage}` : '';
+      registerLog(` ${aviso}${detalhe ? ` (${detalhe})` : ''} Nenhum resultado foi enviado.`);
       printLogs();
-      throw new Error(aviso);
+      throw new Error(`${aviso}${detalhe ? ` (${detalhe})` : ''}`);
     }
   }
 
@@ -215,19 +234,28 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
     };
 
     (async () => {
+      let abortRetries = false;
       for (let attempt = 1; attempt <= MAX_AUTOMATION_ATTEMPTS; attempt++) {
         registerLog(` Executando tentativa ${attempt}/${MAX_AUTOMATION_ATTEMPTS} da automação do BB`);
-        const concluido = await runAutomation();
-        if (concluido) {
-          registerLog(` Automação do BB finalizada na tentativa ${attempt}`);
-          break;
+        try {
+          const concluido = await runAutomation();
+          if (concluido) {
+            registerLog(` Automação do BB finalizada na tentativa ${attempt}`);
+            break;
+          }
+        } catch (attemptError: any) {
+          const detail = attemptError instanceof Error ? attemptError.message : String(attemptError);
+          registerLog(` Falha na tentativa ${attempt} da automação do BB: ${detail}`);
+          printLogs();
         }
-        if (attempt < MAX_AUTOMATION_ATTEMPTS && !hasSentResultsRef.current) {
-          await Helpers.delay(1500);
-          registerLog(' Aguardando para tentar novamente a automação do BB...');
-        } else {
-          registerLog(' Automação do BB não obteve êxito após as tentativas configuradas.');
-          break;
+        if (!hasSentResultsRef.current) {
+          if (attempt < MAX_AUTOMATION_ATTEMPTS && !abortRetries) {
+            await Helpers.delay(1500);
+            registerLog(' Aguardando para tentar novamente a automação do BB...');
+          } else {
+            registerLog(' Automação do BB não obteve êxito após as tentativas configuradas.');
+            break;
+          }
         }
       }
 
@@ -351,7 +379,10 @@ export const BBNavigator: React.FC<{ data: Record<string, any> }> = ({ data }) =
     if (failedFields.length === 0) {
       registerLog(' All tracked fields have been filled successfully.');
     } else {
-      registerLog(` Verification complete. Fields pending or empty: ${failedFields.join(', ')}`);
+      const failureMessage = ` Verification complete. Fields pending or empty: ${failedFields.join(', ')}`;
+      registerLog(failureMessage);
+      printLogs();
+      throw new Error(`Os campos obrigatórios do Banco do Brasil não foram preenchidos corretamente: ${failedFields.join(', ')}`);
     }
 
     if (missingFields.length > 0) {

@@ -504,7 +504,8 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					if (key && value) {
 
 						if (key.includes('amortiza')) {
-							tableData.tipo_amortizacao = `${value} ${optionName}`.trim();
+							const candidate = value || optionName;
+							tableData.tipo_amortizacao = (candidate || '').trim();
 							
 							registerLog(` Mapeado tipo_amortizacao: ${tableData.tipo_amortizacao}`);
 						} else if (key.includes('prazo') && key.includes('escolhido')) {
