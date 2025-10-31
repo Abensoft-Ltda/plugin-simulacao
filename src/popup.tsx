@@ -5,6 +5,8 @@ import { useAutomation } from './methods/startAutomation';
 import LoginScreen from './LoginScreen';
 import SuccessAnimation from './SuccessAnimation';
 import { isDevMode } from './config';
+
+// @ts-ignore
 import './App.css';
 
 const Popup: React.FC = () => {
