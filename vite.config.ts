@@ -57,11 +57,11 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        popup: path.resolve(__dirname, 'src/popup.tsx'),
-        background: path.resolve(__dirname, 'src/background.ts'),
-        caixaNavigation: path.resolve(__dirname, 'src/CaixaNavigator.tsx'),
-        caixaNavigationSecondStep: path.resolve(__dirname, 'src/CaixaNavigatorSecondStep.tsx'),
-        bbNavigation: path.resolve(__dirname, 'src/BBNavigator.tsx'),
+        popup: path.resolve(__dirname, 'src/popup/index.tsx'),
+        background: path.resolve(__dirname, 'src/background/index.ts'),
+        caixaNavigation: path.resolve(__dirname, 'src/content/caixa/Navigator.tsx'),
+        caixaNavigationSecondStep: path.resolve(__dirname, 'src/content/caixa/SecondStepNavigator.tsx'),
+        bbNavigation: path.resolve(__dirname, 'src/content/bb/Navigator.tsx'),
       },
       output: {
         format: 'es',

@@ -1,10 +1,10 @@
 import React from "react";
-import "./App.css";
-import { SimulationOverlay } from "./SimulationOverlay";
-import { autoMountNavigator } from "./lib/autoMountNavigator";
-import { MAX_AUTOMATION_ATTEMPTS } from "./lib/constants";
-import { Helpers } from "./helpers/Helpers";
-import { CaixaHelpers } from "./helpers/CaixaHelpers";
+import "../../App.css";
+import { SimulationOverlay } from "../../shared/components/SimulationOverlay";
+import { autoMountNavigator } from "../../lib/autoMountNavigator";
+import { MAX_AUTOMATION_ATTEMPTS } from "../../lib/constants";
+import { Helpers } from "../../shared/utils/Helpers";
+import { CaixaHelpers } from "./helpers";
 
 declare global {
     interface Window {

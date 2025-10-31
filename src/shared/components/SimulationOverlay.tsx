@@ -281,7 +281,7 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
     );
   }
 
-  // Mostrar overlay em tela cheia correspondendo ao estilo popup.tsx
+  // Mostrar overlay em tela cheia correspondendo ao estilo popup/index.tsx
   return (
     <>
       {children}

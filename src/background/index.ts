@@ -1,8 +1,8 @@
-import { writeLog } from './lib/logger';
-import { CaixaFields, BBFields } from './methods/Validation';
-import { SimulationResultService } from './lib/SimulationResultService';
-import { SimulationPayload } from './lib/SimulationPayload';
-import { AuthService } from './lib/AuthService';
+import { writeLog } from '../lib/logger';
+import { CaixaFields, BBFields } from '../methods/Validation';
+import { SimulationResultService } from '../lib/SimulationResultService';
+import { SimulationPayload } from '../lib/SimulationPayload';
+import { AuthService } from '../lib/AuthService';
 
 let activeAutomations = new Map<number, any>();
 let injectionInProgress = new Set<number>();

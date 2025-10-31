@@ -23,16 +23,16 @@ Documentação do projeto **plugin-simulacao**, uma extensão Chrome construída
 
 ## Visão Geral
 
-A extensão injeta componentes React diretamente nos simuladores bancários para preencher formulários, coletar as opções disponibilizadas, monitorar erros de interface e enviar os resultados ao back-end do Superleme. Todo o fluxo é disparado a partir do `popup` da extensão, que dispara requisições para o *service worker* de fundo (`background.ts`). Esse service worker coordena a criação de novas abas, injeta os *navigators* específicos de cada banco e consolida as respostas para envio ao servidor.
+A extensão injeta componentes React diretamente nos simuladores bancários para preencher formulários, coletar as opções disponibilizadas, monitorar erros de interface e enviar os resultados ao back-end do Superleme. Todo o fluxo é disparado a partir do `popup` da extensão, que dispara requisições para o *service worker* de fundo (`background/index.ts`). Esse service worker coordena a criação de novas abas, injeta os *navigators* específicos de cada banco e consolida as respostas para envio ao servidor.
 
 ---
 
 ## Principais Funcionalidades
 
-- **Automação de simuladores bancários**: componentes como `CaixaNavigator.tsx` e `CaixaNavigatorSecondStep.tsx` preenchem formulários, navegam por etapas e extraem tabelas de resultados.
+- **Automação de simuladores bancários**: componentes como `content/caixa/Navigator.tsx` e `content/caixa/SecondStepNavigator.tsx` preenchem formulários, navegam por etapas e extraem tabelas de resultados.
 - **Overlay informativo**: `SimulationOverlay.tsx` apresenta um painel fixo no site do banco mostrando o status, erros e mensagens para o usuário.
 - **Comunicação confiável com o background**: `BankMessenger` encapsula a troca de mensagens entre scripts injetados e o service worker, com confirmação e *timeout*.
-- **Validação e roteamento de pedidos**: `background.ts` identifica o banco-alvo, lança uma nova aba e mantém o estado da automação por aba, controlando concorrência com `activeAutomations`.
+- **Validação e roteamento de pedidos**: `background/index.ts` identifica o banco-alvo, lança uma nova aba e mantém o estado da automação por aba, controlando concorrência com `activeAutomations`.
 - **Envio de resultados ao Superleme**: `SimulationResultService` normaliza dados, monta `SimulationPayload` e realiza *POST* autenticado para a API do Superleme.
 - **Persistência de autenticação**: `AuthService` extrai cookies da aplicação Superleme, armazena com expiração e valida as credenciais antes de cada envio.
 - **Registro de logs**: `lib/logger.ts` armazena logs no `chrome.storage.local`, permitindo acompanhamento pela interface (`LogViewer.tsx`).
@@ -43,11 +43,11 @@ A extensão injeta componentes React diretamente nos simuladores bancários para
 
 | Local | Papel |
 |-------|-------|
-| `src/background.ts` | Service worker MV3. Recebe comandos do `popup`, identifica o banco, abre novas abas, injeta scripts, envia resultados e trata autenticação. |
-| `src/popup.tsx` & `src/methods/startAutomation.ts` | Interface do menu da extensão. Permite iniciar simulações, limpar logs e exibe o status ao operador. |
-| `src/CaixaNavigator.tsx` & `src/CaixaNavigatorSecondStep.tsx` | Automação da Caixa (primeira e segunda etapa). Utiliza `CaixaHelpers` para preencher campos, lidar com diálogos e coletar tabelas. |
-| `src/BBNavigator.tsx` | Automação específica do Banco do Brasil, reutilizando padrões das helpers e do overlay. |
-| `src/helpers/*` | Utilitários de automação (espera de elementos, inputs naturais, tratamento de tabelas e mensagens). `CaixaHelpers` encapsula a lógica de interação com a interface da Caixa. |
+| `src/background/index.ts` | Service worker MV3. Recebe comandos do `popup`, identifica o banco, abre novas abas, injeta scripts, envia resultados e trata autenticação. |
+| `src/popup/index.tsx` & `src/methods/startAutomation.ts` | Interface do menu da extensão. Permite iniciar simulações, limpar logs e exibe o status ao operador. |
+| `src/content/caixa/Navigator.tsx` & `src/content/caixa/SecondStepNavigator.tsx` | Automação da Caixa (primeira e segunda etapa). Utiliza `content/caixa/helpers.ts` para preencher campos, lidar com diálogos e coletar tabelas. |
+| `src/content/bb/Navigator.tsx` | Automação específica do Banco do Brasil, reutilizando padrões das helpers e do overlay. |
+| `src/content/*/helpers.ts` | Utilitários de automação (espera de elementos, inputs naturais, tratamento de tabelas e mensagens) específicos por banco. |
 | `src/lib/autoMountNavigator.ts` | Monta dinamicamente componentes React no contexto da página-alvo, criando o container quando necessário. |
 | `src/lib/BankMessenger.ts` | Bilioteca de envio de payloads entre página e background com confirmação opcional. |
 | `src/lib/SimulationPayload.ts` | Normaliza resultados (tipos, valores monetários, prazos) e garante formato consistente para a API. |
@@ -103,7 +103,7 @@ Outros componentes como `SimulationOverlay.tsx`, `SuccessAnimation.tsx` e `LogVi
 
 - Node.js 18+ (recomendado 20 LTS).
 - npm (ou pnpm/yarn, adaptando os comandos).
-- Google Chrome (para testes com extensões MV3).
+- Navegador baseado em Chromium (para testes com extensões MV3).
 
 ### Instalação
 
@@ -153,8 +153,8 @@ Esse alvo cuida de instalar dependências, gerar a pasta `dist/` e organizar os 
 
 ## Adicionando novos bancos
 
-1. **Roteamento**: atualize `resolveBankLabel` e o `switch` em `startBankSimulation` (`src/background.ts`) com a nova URL e rótulo normalizado.
-2. **Navigator/Overlay**: crie um componente React similar a `CaixaNavigator`/`BBNavigator` e exponha funções helper específicas em `src/helpers`.
+1. **Roteamento**: atualize `resolveBankLabel` e o `switch` em `startBankSimulation` (`src/background/index.ts`) com a nova URL e rótulo normalizado.
+2. **Navigator/Overlay**: crie um componente React similar a `content/caixa/Navigator.tsx`/`content/bb/Navigator.tsx` e exponha funções helper específicas (`content/<banco>/helpers.ts`).
 3. **Helpers**: caso necessário, crie helpers dedicados (`SantanderHelpers`, por exemplo) para encapsular seletores e interações.
 4. **Manifesto**: inclua o domínio do banco em `host_permissions` e nos `matches` dos recursos acessíveis.
 5. **Build**: garanta que o novo bundle entre na lista `web_accessible_resources` e seja injetado pelo background quando a aba detectar o domínio correspondente.
@@ -165,25 +165,34 @@ Esse alvo cuida de instalar dependências, gerar a pasta `dist/` e organizar os 
 
 ```
 src/
-├── background.ts           # Service worker MV3
-├── popup.tsx               # Interface do popup
+├── background/
+│   └── index.ts            # Service worker MV3
+├── popup/
+│   ├── index.tsx           # Interface do popup
+│   └── components/         # LoginScreen, SuccessAnimation, LogViewer
 ├── methods/
 │   ├── startAutomation.ts  # Hook para iniciar simulações via popup
 │   ├── Caixa.ts, BB.ts     # Funções específicas de cada banco
 │   └── Validation.ts       # Validação de campos de entrada
-├── helpers/
-│   ├── CaixaHelpers.ts     # Utilitários de automação da Caixa
-│   ├── BBHelpers.ts        # Utilitários do Banco do Brasil
-│   └── Helpers.ts          # Funções genéricas (delay, formatação, etc.)
+├── content/
+│   ├── caixa/
+│   │   ├── Navigator.tsx
+│   │   ├── SecondStepNavigator.tsx
+│   │   └── helpers.ts      # Utilitários da Caixa
+│   └── bb/
+│       ├── Navigator.tsx
+│       └── helpers.ts      # Utilitários do Banco do Brasil
 ├── lib/
 │   ├── AuthService.ts
 │   ├── BankMessenger.ts
 │   ├── SimulationPayload.ts
 │   ├── SimulationResultService.ts
 │   └── logger.ts
-├── CaixaNavigator*.tsx     # Componentes React injeta­dos no simulador da Caixa
-├── BBNavigator.tsx         # Componente do simulador BB
-├── SimulationOverlay.tsx   # Overlay de status exibido dentro do site do banco
+├── shared/
+│   ├── components/
+│   │   └── SimulationOverlay.tsx   # Overlay de status exibido dentro do site do banco
+│   └── utils/
+│       └── Helpers.ts              # Funções genéricas (delay, formatação, etc.)
 └── manifest.template.json  # Modelo usado pelo build para gerar manifest.json
 ```
 

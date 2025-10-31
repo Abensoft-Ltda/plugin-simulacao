@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getConfig } from "./config";
+import { getConfig } from "../../config";
 
 interface LoginScreenProps {
   onAuthenticated: () => void;

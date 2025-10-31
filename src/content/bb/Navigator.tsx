@@ -1,12 +1,12 @@
 import React from 'react';
-import './App.css';
-import { SimulationOverlay } from './SimulationOverlay';
-import { SimulationPayload } from './lib/SimulationPayload';
-import { autoMountNavigator } from './lib/autoMountNavigator';
-import { BankMessenger } from './lib/BankMessenger';
-import { MAX_AUTOMATION_ATTEMPTS } from './lib/constants';
-import { Helpers } from './helpers/Helpers';
-import { BBHelpers } from './helpers/BBHelpers';
+import '../../App.css';
+import { SimulationOverlay } from '../../shared/components/SimulationOverlay';
+import { SimulationPayload } from '../../lib/SimulationPayload';
+import { autoMountNavigator } from '../../lib/autoMountNavigator';
+import { BankMessenger } from '../../lib/BankMessenger';
+import { MAX_AUTOMATION_ATTEMPTS } from '../../lib/constants';
+import { Helpers } from '../../shared/utils/Helpers';
+import { BBHelpers } from './helpers';
 
 declare global {
   interface Window {

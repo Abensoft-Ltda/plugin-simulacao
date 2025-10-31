@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LogViewer } from './LogViewer';
-import { useAutomation } from './methods/startAutomation';
-import LoginScreen from './LoginScreen';
-import SuccessAnimation from './SuccessAnimation';
-import { isDevMode } from './config';
+import { LogViewer } from './components/LogViewer';
+import { useAutomation } from '../methods/startAutomation';
+import LoginScreen from './components/LoginScreen';
+import SuccessAnimation from './components/SuccessAnimation';
+import { isDevMode } from '../config';
 
 // @ts-ignore
-import './App.css';
+import '../App.css';
 
 const Popup: React.FC = () => {
     const { startSimulation, clearLogs, isOnCaixaPage } = useAutomation();

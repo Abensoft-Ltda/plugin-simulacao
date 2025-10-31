@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { readLogs, type LogEntry } from "./lib/logger";
-import "./App.css";
+import { readLogs, type LogEntry } from "../../lib/logger";
+import "../../App.css";
 
 interface LogViewerProps {
   onClear: () => void;

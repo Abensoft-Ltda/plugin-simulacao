@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test script to make an insecure verbose request to the Superleme API
-Tests all endpoints found in background.ts and saves results to test_api.txt
+Tests all endpoints found in background/index.ts and saves results to test_api.txt
 """
 
 import requests

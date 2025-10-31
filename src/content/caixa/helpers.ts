@@ -1,7 +1,7 @@
-import type { Logger } from './BBHelpers';
-import { Helpers } from './Helpers';
-import { MAX_AUTOMATION_ATTEMPTS } from '../lib/constants';
-import { SimulationPayload } from '../lib/SimulationPayload';
+import type { Logger } from '../bb/helpers';
+import { Helpers } from '../../shared/utils/Helpers';
+import { MAX_AUTOMATION_ATTEMPTS } from '../../lib/constants';
+import { SimulationPayload } from '../../lib/SimulationPayload';
 
 const log = (logger: Logger, message: string) => {
   logger.registerLog(message);

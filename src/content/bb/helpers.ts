@@ -1,5 +1,5 @@
-import { Helpers } from './Helpers';
-import { MAX_AUTOMATION_ATTEMPTS } from '../lib/constants';
+import { Helpers } from '../../shared/utils/Helpers';
+import { MAX_AUTOMATION_ATTEMPTS } from '../../lib/constants';
 
 export interface Logger {
   registerLog: (message: string) => void;
