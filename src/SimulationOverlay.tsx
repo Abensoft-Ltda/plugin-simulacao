@@ -166,7 +166,10 @@ export const SimulationOverlay: React.FC<SimulationOverlayProps> = ({
           <div className="flex items-center justify-center">
             <PrimaryButton
               onClick={() => setIsWatching(false)}
-              className="flex items-center gap-2 w-full justify-center bg-main-green hover:bg-green-600 text-white border-none rounded-md py-2 px-3"
+              className="flex items-center gap-2 w-full justify-center bg-main-green bg-green-600 text-white border-none rounded-md py-2 px-3
+              
+              hover:bg-green-400 hover:py-3 hover:px-4 transition-all duration-200 
+              "
               style={{ fontFamily: OVERLAY_FONT_FAMILY }}
               aria-label="Voltar"
               data-font="hide-button"
