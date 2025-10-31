@@ -32,7 +32,12 @@ export class Helpers {
     return str
       .split(' ')
       .filter(Boolean)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .map(word => {
+        if (!word) return '';
+        const [first, ...rest] = [...word];
+        const initial = first ? first.toLocaleUpperCase('pt-BR') : '';
+        return `${initial}${rest.join('')}`;
+      })
       .join(' ');
   }
 

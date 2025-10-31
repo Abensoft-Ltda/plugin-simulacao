@@ -189,7 +189,15 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 			for (let i = 0; i < optionLinks.length; i++) {
 				const link = optionLinks[i] as HTMLAnchorElement;
-				const optionName = link.textContent?.trim() || `Opção ${i + 1}`;
+				const optionNameRaw = link.textContent?.trim();
+				let optionName = optionNameRaw && optionNameRaw.length > 0 ? optionNameRaw : `Opção ${i + 1}`;
+				const normalizedOptionName = CaixaHelpers.normalizeTipoAmortizacao(optionName);
+				if (normalizedOptionName) {
+					optionName = normalizedOptionName;
+				} else if (/ATEN[ÇC][AÃ]O!?/i.test(optionName)) {
+					optionName = `Opção ${i + 1}`;
+				}
+
 				if (optionName) {
 					lastFailureContextRef.current = optionName;
 				}

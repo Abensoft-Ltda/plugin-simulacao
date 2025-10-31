@@ -91,6 +91,28 @@ export class CaixaHelpers {
     return false;
   }
 
+  static normalizeTipoAmortizacao(value: string | null | undefined): string | null {
+    if (value === null || value === undefined) return null;
+
+    const hasWarning = /ATEN[ÇC][AÃ]O!?/i.test(value);
+    const withoutWarning = value
+      .replace(/ATEN[ÇC][AÃ]O!?/gi, '')
+      .replace(/!/g, ' ');
+    const cleaned = withoutWarning
+      .replace(/^[\s\-:]+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleaned) {
+      if (!hasWarning) {
+        return Helpers.capitalizeWords(value.toLocaleLowerCase('pt-BR'));
+      }
+      return null;
+    }
+
+    return Helpers.capitalizeWords(cleaned.toLocaleLowerCase('pt-BR'));
+  }
+
   static async setInstantValue(selector: string, value: string, logger: Logger, isSelect = false): Promise<void> {
     const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement;
     if (!el) {
@@ -529,6 +551,15 @@ export class CaixaHelpers {
         }
       } catch (error) {
         log(logger, ` Não foi possível extrair taxas de juros: ${error}`);
+      }
+
+      const normalizedTipo = this.normalizeTipoAmortizacao(tableData.tipo_amortizacao);
+      if (normalizedTipo !== null) {
+        tableData.tipo_amortizacao = normalizedTipo;
+        log(logger, ` Tipo de amortização normalizado para "${tableData.tipo_amortizacao}"`);
+      } else if (tableData.tipo_amortizacao) {
+        tableData.tipo_amortizacao = null;
+        log(logger, ' Tipo de amortização limpo resultou vazio. Valor removido para evitar alerta residual.');
       }
 
       log(logger, ` Dados finais da tabela: ${JSON.stringify(tableData)}`);
