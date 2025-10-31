@@ -5,6 +5,7 @@ import { SimulationPayload } from './lib/SimulationPayload';
 import { autoMountNavigator } from './lib/autoMountNavigator';
 import { BankMessenger } from './lib/BankMessenger';
 import { MAX_AUTOMATION_ATTEMPTS } from './lib/constants';
+import { CaixaHelpers } from './helpers/CaixaHelpers';
 
 let logs: string[] = [];
 
@@ -16,49 +17,6 @@ function registerLog(message: string) {
 function printLogs() {
 	console.clear();
 	logs.forEach(msg => console.log(msg));
-}
-
-function closeParentDialog(node: Element | null): void {
-	if (!node) return;
-	const dialogContainer = node.closest(".ui-dialog") as HTMLElement | null;
-	const closeButton = dialogContainer?.querySelector(
-		".ui-dialog-titlebar-close"
-	) as HTMLButtonElement | null;
-
-	if (closeButton) {
-		closeButton.click();
-		registerLog(" Diálogo de erro fechado pelo botão de fechar do título.");
-	} else if (dialogContainer) {
-		dialogContainer.style.display = "none";
-		registerLog(" Ocultado contêiner do diálogo (botão de fechar não encontrado).");
-	}
-}
-
-function checkForErrorDialog(): boolean {
-	const errorDialog = document.querySelector('#ui-id-34.ui-dialog-content.ui-widget-content');
-
-	if (errorDialog) {
-		const errorText = errorDialog.textContent?.trim();
-		registerLog(`Diálogo de erro #ui-id-34 encontrado com o texto: "${errorText}"`);
-
-		if (errorText?.includes('Campo obrigatório não informado')) {
-			registerLog('Diálogo de erro contém "Campo obrigatório não informado" - fechando diálogo');
-			closeParentDialog(errorDialog);
-			return true;
-		}
-	}
-
-	const allDialogs = document.querySelectorAll('.ui-dialog-content, [class*="ui-dialog"]');
-	for (const dialog of allDialogs) {
-		const dialogText = dialog.textContent?.trim();
-		if (dialogText?.includes('Campo obrigatório não informado')) {
-			registerLog(`Diálogo de erro encontrado com a classe "${dialog.className}" contendo o texto de erro - fechando diálogo`);
-			closeParentDialog(dialog);
-			return true;
-		}
-	}
-
-	return false;
 }
 
 export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> = ({ data }) => {
@@ -170,6 +128,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 	
 	registerLog(`[CaixaNavigatorSecondStep] Dados recebidos: ${JSON.stringify(data)}`);
 	const isCaixaPage = typeof window !== 'undefined' && /\.caixa\.gov\.br$/.test(window.location.hostname);
+	const logger = React.useMemo(() => ({ registerLog, printLogs }), []);
 
 	async function processFinancingOptions(): Promise<any> {
 		
@@ -178,7 +137,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 
 		try {
 			// Verificação inicial de erro
-		if (checkForErrorDialog()) {
+		if (CaixaHelpers.checkForSecondStepErrorDialog(logger)) {
 			const mensagem = 'A página da Caixa apresentou um aviso de erro antes de iniciar a coleta.';
 			registerLog(` ${mensagem}`);
 			throw new Error(mensagem);
@@ -188,7 +147,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			await new Promise(resolve => setTimeout(resolve, 2000));
 
 			// Verifica diálogo de erro após carregamento
-		if (checkForErrorDialog()) {
+		if (CaixaHelpers.checkForSecondStepErrorDialog(logger)) {
 			const mensagem = 'A página da Caixa apresentou um aviso logo após o carregamento.';
 			registerLog(` ${mensagem}`);
 			throw new Error(mensagem);
@@ -244,7 +203,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 				registerLog(` ===== Processando opção ${i + 1}/${optionLinks.length}: "${optionName}" =====`);
 
 				// Verifica diálogo de erro antes de processar cada opção
-			if (checkForErrorDialog()) {
+			if (CaixaHelpers.checkForSecondStepErrorDialog(logger)) {
 				const mensagem = 'A Caixa exibiu um aviso antes de coletar todas as opções.';
 				registerLog(` ${mensagem}`);
 				throw new Error(mensagem);
@@ -321,7 +280,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					registerLog(` Clique executado, aguardando resposta...`);
 					await new Promise(resolve => setTimeout(resolve, 2000));
 
-				if (checkForErrorDialog()) {
+				if (CaixaHelpers.checkForSecondStepErrorDialog(logger)) {
 					const mensagem = `A Caixa exibiu um erro ao abrir a opção "${optionName}".`;
 					registerLog(` ${mensagem}`);
 					throw new Error(mensagem);
@@ -363,7 +322,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 							
 							registerLog(` Nenhum .erro_feedback encontrado; tentando extrair tabela de resultados`);
 						}
-						const tableData = await extractTableData(optionName);
+						const tableData = await CaixaHelpers.extractTableData(optionName, logger);
 						if (tableData) {
 							
 							registerLog(` Dados da tabela extraídos com sucesso`);
@@ -378,9 +337,9 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					registerLog(` Voltando para a página de opções...`);
 					printLogs();
 					if (errorFound) {
-						await goBackFromErrorPage();
+						await CaixaHelpers.goBackFromErrorPage(logger);
 					} else {
-						await goBackFromSuccessPage();
+						await CaixaHelpers.goBackFromSuccessPage(logger);
 					}
 
 				} catch (error: any) {
@@ -388,7 +347,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 					registerLog(` Erro ao processar opção "${optionName}": ${error.message}`);
 					printLogs();
 					payload.addEntry(buildFailureEntry(error.message, optionName));
-					await goBackFromErrorPage();
+					await CaixaHelpers.goBackFromErrorPage(logger);
 				}
 			}
 
@@ -420,169 +379,6 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 	}
 	}
 
-	// Função 'Voltar' para a página de ERRO
-	async function goBackFromErrorPage(): Promise<void> {
-		try {
-			const backButton = document.querySelector('button[onclick*="voltarTelaEnquadrar"]');
-			if (backButton) {
-				
-				registerLog(` Clicando no botão voltar da página de ERRO: button[onclick*="voltarTelaEnquadrar"]`);
-				(backButton as HTMLElement).click();
-				await new Promise(resolve => setTimeout(resolve, 2000)); // Espera página recarregar
-			} else {
-				
-				registerLog(` Não foi possível encontrar o botão voltar na página de erro.`);
-			}
-		} catch (error: any) {
-			
-			registerLog(` Erro ao voltar da página de erro: ${error.message}`);
-		}
-	}
-
-	// Função 'Voltar' para a página de SUCESSO
-	async function goBackFromSuccessPage(): Promise<void> {
-		try {
-			const backButton = document.querySelector('#botaoVoltar');
-			if (backButton) {
-				
-				registerLog(` Clicando no botão voltar da página de SUCESSO: #botaoVoltar`);
-				(backButton as HTMLElement).click();
-				await new Promise(resolve => setTimeout(resolve, 2000));
-			} else {
-				
-				registerLog(` Não foi possível encontrar o botão voltar na página de sucesso.`);
-			}
-		} catch (error: any) {
-			
-			registerLog(` Erro ao voltar da página de sucesso: ${error.message}`);
-		}
-	}
-
-	// Extrai dados da tabela de resultados
-	async function extractTableData(optionName: string): Promise<any | null> {
-		try {
-			// Procura pela tabela de resultados
-			
-			registerLog(` Procurando por table.simple-table...`);
-			const table = document.querySelector('table.simple-table');
-
-			if (!table) {
-				
-				registerLog(` Nenhuma table.simple-table encontrada, verificando outros tipos de tabela...`);
-				const allTables = document.querySelectorAll('table');
-				registerLog(` Encontradas ${allTables.length} tabelas no total`);
-				allTables.forEach((t, i) => {
-					registerLog(` Tabela ${i + 1}: class="${t.className}" linhas=${t.querySelectorAll('tr').length}`);
-				});
-				return null;
-			}
-			
-			registerLog(` Tabela de resultados encontrada para a opção "${optionName}" com ${table.querySelectorAll('tr').length} linhas`);
-
-			// Extrai dados da tabela
-			const rows = table.querySelectorAll('tr');
-			const tableData: any = {
-				tipo_amortizacao: optionName,
-				prazo: null,
-				valor_total: null,
-				valor_entrada: null,
-				juros_nominais: null,
-				juros_efetivos: null
-			};
-
-			rows.forEach((row, rowIndex) => {
-				const cells = row.querySelectorAll('td');
-				if (cells.length >= 2) {
-					const key = (cells[0].textContent?.trim() || '').toLowerCase();
-					const valueCell = cells[1];
-
-					const centerTag = valueCell.querySelector('center');
-					const value = (centerTag?.textContent?.trim() || valueCell.textContent?.trim() || '').replace(/\s+/g, ' ');
-					
-					registerLog(` Linha ${rowIndex + 1}: "${key}" = "${value}"`);
-
-					if (key && value) {
-
-						if (key.includes('amortiza')) {
-							const candidate = value || optionName;
-							tableData.tipo_amortizacao = (candidate || '').trim();
-							
-							registerLog(` Mapeado tipo_amortizacao: ${tableData.tipo_amortizacao}`);
-						} else if (key.includes('prazo') && key.includes('escolhido')) {
-							tableData.prazo = value;
-							
-							registerLog(` Mapeado prazo: ${tableData.prazo}`);
-						} else if (key.includes('financiamento') && key.includes('valor')) {
-							tableData.valor_total = value;
-							
-							registerLog(` Mapeado valor_total: ${tableData.valor_total}`);
-						} else if (key.includes('entrada') && key.includes('valor')) {
-							tableData.valor_entrada = value;
-							
-							registerLog(` Mapeado valor_entrada: ${tableData.valor_entrada}`);
-						}
-					}
-				}
-			});
-
-			// Extrai taxas de juros usando o mesmo seletor XPath do Python
-			try {
-				
-				registerLog(` Procurando por taxas de juros usando XPath...`);
-
-				// Usa XPath para encontrar juros nominais - igual ao código Python
-				const jurosNominaisXPath = "//td[contains(., 'Juros Nominais')]/following-sibling::td/center";
-				const jurosNominaisResult = document.evaluate(
-					jurosNominaisXPath,
-					document,
-					null,
-					XPathResult.FIRST_ORDERED_NODE_TYPE,
-					null
-				);
-
-				if (jurosNominaisResult.singleNodeValue) {
-					tableData.juros_nominais = jurosNominaisResult.singleNodeValue.textContent?.trim();
-					
-					registerLog(` Encontrados juros nominais: ${tableData.juros_nominais}`);
-				} else {
-					
-					registerLog(` Não foi possível encontrar juros nominais`);
-				}
-
-				// Usa XPath para encontrar juros efetivos - igual ao código Python
-				const jurosEfetivosXPath = "//td[contains(., 'Juros Efetivos')]/following-sibling::td/center";
-				const jurosEfetivosResult = document.evaluate(
-					jurosEfetivosXPath,
-					document,
-					null,
-					XPathResult.FIRST_ORDERED_NODE_TYPE,
-					null
-				);
-
-				if (jurosEfetivosResult.singleNodeValue) {
-					tableData.juros_efetivos = jurosEfetivosResult.singleNodeValue.textContent?.trim();
-					
-					registerLog(` Encontrados juros efetivos: ${tableData.juros_efetivos}`);
-				} else {
-					
-					registerLog(` Não foi possível encontrar juros efetivos`);
-				}
-
-			} catch (error) {
-				
-				registerLog(` Não foi possível extrair taxas de juros: ${error}`);
-			}
-			
-			registerLog(` Dados finais da tabela: ${JSON.stringify(tableData)}`);
-			return SimulationPayload.ensureEntry(tableData, 'caixa');
-
-		} catch (error: any) {
-			
-			registerLog(` Erro ao extrair dados da tabela: ${error.message}`);
-			return null;
-		}
-	}
-
 	React.useEffect(() => {
 		if (!isCaixaPage) {
 			
@@ -612,7 +408,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 		writeAutomationGuard('running');
 
 		const errorCheckInterval = setInterval(() => {
-			checkForErrorDialog();
+			CaixaHelpers.checkForSecondStepErrorDialog(logger);
 		}, 1000);
 		
 		registerLog('[CaixaNavigatorSecondStep] Componente da segunda etapa carregado para processamento das opções de financiamento');
@@ -687,7 +483,7 @@ export const CaixaNavigatorSecondStep: React.FC<{ data: Record<string, any> }> =
 			clearInterval(errorCheckInterval);
 		};
 
-	}, [isCaixaPage, readAutomationGuard, writeAutomationGuard]);
+	}, [isCaixaPage, readAutomationGuard, writeAutomationGuard, logger]);
 
 	return (
 		<SimulationOverlay

@@ -1107,11 +1107,16 @@ export class BBHelpers {
     const taxa = infoMap['taxa de juros'] || null;
     const cet = infoMap['custo efetivo total'] || null;
 
+    const parts: string[] = [];
+    if (prazo) parts.push(`Prazo: ${prazo}`);
+    if (parcela) parts.push(`Valor das parcelas: ${parcela}`);
+    const tipoLabel = parts.length > 0 ? `Opção personalizada: ${parts.join(' - ')}` : 'Opção personalizada';
+
     return {
-      tipo_amortizacao: `Opção com prazo de ${prazo}\n
-                                  Valor das parcelas: ${parcela}` ,
+      tipo_amortizacao: tipoLabel,
       valor_total: valorSolicitado,
       valor_entrada: null,
+      prazo,
       juros_nominais: taxa,
       juros_efetivos: cet || taxa,
       parcela,
@@ -1157,7 +1162,6 @@ export class BBHelpers {
     entryDigits: string,
     entryCurrency: string | null,
     logger: Logger,
-    selectCache: SelectCache
   ): Promise<Record<string, any> | null> {
     try {
       let formHost = document.querySelector('custom-form-fazer-do-meu-jeito form#form, custom-form-fazer-do-meu-jeito form') as HTMLElement | null;

@@ -1,6 +1,7 @@
 import type { Logger } from './BBHelpers';
 import { Helpers } from './Helpers';
 import { MAX_AUTOMATION_ATTEMPTS } from '../lib/constants';
+import { SimulationPayload } from '../lib/SimulationPayload';
 
 const log = (logger: Logger, message: string) => {
   logger.registerLog(message);
@@ -61,6 +62,33 @@ export class CaixaHelpers {
         throw new Error("Diálogo de 'Campo obrigatório não informado' detectado.");
       }
     }
+  }
+
+  static checkForSecondStepErrorDialog(logger: Logger): boolean {
+    const errorDialog = document.querySelector('#ui-id-34.ui-dialog-content.ui-widget-content');
+
+    if (errorDialog) {
+      const errorText = errorDialog.textContent?.trim();
+      log(logger, `Diálogo de erro #ui-id-34 encontrado com o texto: "${errorText}"`);
+
+      if (errorText?.includes('Campo obrigatório não informado')) {
+        log(logger, 'Diálogo de erro contém "Campo obrigatório não informado" - fechando diálogo');
+        this.closeParentDialog(errorDialog, logger);
+        return true;
+      }
+    }
+
+    const allDialogs = document.querySelectorAll('.ui-dialog-content, [class*="ui-dialog"]');
+    for (const dialog of allDialogs) {
+      const dialogText = dialog.textContent?.trim();
+      if (dialogText?.includes('Campo obrigatório não informado')) {
+        log(logger, `Diálogo de erro encontrado com a classe "${dialog.className}" contendo o texto de erro - fechando diálogo`);
+        this.closeParentDialog(dialog, logger);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   static async setInstantValue(selector: string, value: string, logger: Logger, isSelect = false): Promise<void> {
@@ -377,5 +405,137 @@ export class CaixaHelpers {
       throw error;
     }
   }
-}
 
+  static async goBackFromErrorPage(logger: Logger): Promise<void> {
+    try {
+      const backButton = document.querySelector('button[onclick*="voltarTelaEnquadrar"]');
+      if (backButton) {
+        log(logger, ' Clicando no botão voltar da página de ERRO: button[onclick*="voltarTelaEnquadrar"]');
+        (backButton as HTMLElement).click();
+        await Helpers.delay(2000);
+      } else {
+        log(logger, ' Não foi possível encontrar o botão voltar na página de erro.');
+      }
+    } catch (error: any) {
+      log(logger, ` Erro ao voltar da página de erro: ${error.message}`);
+    }
+  }
+
+  static async goBackFromSuccessPage(logger: Logger): Promise<void> {
+    try {
+      const backButton = document.querySelector('#botaoVoltar');
+      if (backButton) {
+        log(logger, ' Clicando no botão voltar da página de SUCESSO: #botaoVoltar');
+        (backButton as HTMLElement).click();
+        await Helpers.delay(2000);
+      } else {
+        log(logger, ' Não foi possível encontrar o botão voltar na página de sucesso.');
+      }
+    } catch (error: any) {
+      log(logger, ` Erro ao voltar da página de sucesso: ${error.message}`);
+    }
+  }
+
+  static async extractTableData(optionName: string, logger: Logger): Promise<ReturnType<typeof SimulationPayload.ensureEntry> | null> {
+    try {
+      log(logger, ' Procurando por table.simple-table...');
+      const table = document.querySelector('table.simple-table');
+
+      if (!table) {
+        log(logger, ' Nenhuma table.simple-table encontrada, verificando outros tipos de tabela...');
+        const allTables = document.querySelectorAll('table');
+        log(logger, ` Encontradas ${allTables.length} tabelas no total`);
+        allTables.forEach((t, i) => {
+          log(logger, ` Tabela ${i + 1}: class="${t.className}" linhas=${t.querySelectorAll('tr').length}`);
+        });
+        return null;
+      }
+
+      log(logger, ` Tabela de resultados encontrada para a opção "${optionName}" com ${table.querySelectorAll('tr').length} linhas`);
+
+      const rows = table.querySelectorAll('tr');
+      const tableData: any = {
+        tipo_amortizacao: optionName,
+        prazo: null,
+        valor_total: null,
+        valor_entrada: null,
+        juros_nominais: null,
+        juros_efetivos: null,
+      };
+
+      rows.forEach((row, rowIndex) => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 2) {
+          const key = (cells[0].textContent?.trim() || '').toLowerCase();
+          const valueCell = cells[1];
+
+          const centerTag = valueCell.querySelector('center');
+          const value = (centerTag?.textContent?.trim() || valueCell.textContent?.trim() || '').replace(/\s+/g, ' ');
+
+          log(logger, ` Linha ${rowIndex + 1}: "${key}" = "${value}"`);
+
+          if (key && value) {
+            if (key.includes('amortiza')) {
+              const candidate = value || optionName;
+              tableData.tipo_amortizacao = (candidate || '').trim();
+              log(logger, ` Mapeado tipo_amortizacao: ${tableData.tipo_amortizacao}`);
+            } else if (key.includes('prazo') && key.includes('escolhido')) {
+              tableData.prazo = value;
+              log(logger, ` Mapeado prazo: ${tableData.prazo}`);
+            } else if (key.includes('financiamento') && key.includes('valor')) {
+              tableData.valor_total = value;
+              log(logger, ` Mapeado valor_total: ${tableData.valor_total}`);
+            } else if (key.includes('entrada') && key.includes('valor')) {
+              tableData.valor_entrada = value;
+              log(logger, ` Mapeado valor_entrada: ${tableData.valor_entrada}`);
+            }
+          }
+        }
+      });
+
+      try {
+        log(logger, ' Procurando por taxas de juros usando XPath...');
+
+        const jurosNominaisXPath = "//td[contains(., 'Juros Nominais')]/following-sibling::td/center";
+        const jurosNominaisResult = document.evaluate(
+          jurosNominaisXPath,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null,
+        );
+
+        if (jurosNominaisResult.singleNodeValue) {
+          tableData.juros_nominais = jurosNominaisResult.singleNodeValue.textContent?.trim();
+          log(logger, ` Encontrados juros nominais: ${tableData.juros_nominais}`);
+        } else {
+          log(logger, ' Não foi possível encontrar juros nominais');
+        }
+
+        const jurosEfetivosXPath = "//td[contains(., 'Juros Efetivos')]/following-sibling::td/center";
+        const jurosEfetivosResult = document.evaluate(
+          jurosEfetivosXPath,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null,
+        );
+
+        if (jurosEfetivosResult.singleNodeValue) {
+          tableData.juros_efetivos = jurosEfetivosResult.singleNodeValue.textContent?.trim();
+          log(logger, ` Encontrados juros efetivos: ${tableData.juros_efetivos}`);
+        } else {
+          log(logger, ' Não foi possível encontrar juros efetivos');
+        }
+      } catch (error) {
+        log(logger, ` Não foi possível extrair taxas de juros: ${error}`);
+      }
+
+      log(logger, ` Dados finais da tabela: ${JSON.stringify(tableData)}`);
+      return SimulationPayload.ensureEntry(tableData, 'caixa');
+    } catch (error: any) {
+      log(logger, ` Erro ao extrair dados da tabela: ${error.message}`);
+      return null;
+    }
+  }
+}
