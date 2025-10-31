@@ -1107,10 +1107,8 @@ export class BBHelpers {
     const taxa = infoMap['taxa de juros'] || null;
     const cet = infoMap['custo efetivo total'] || null;
 
-    const parts: string[] = [];
-    if (prazo) parts.push(`Prazo: ${prazo}`);
-    if (parcela) parts.push(`Valor das parcelas: ${parcela}`);
-    const tipoLabel = parts.length > 0 ? `Opção personalizada: ${parts.join(' - ')}` : 'Opção personalizada';
+    const tipoLabel =  parcela? `Opção personalizada: Valor das parcelas: ${parcela}`: "Opção personalizada";
+
 
     return {
       tipo_amortizacao: tipoLabel,
